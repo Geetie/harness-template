@@ -1,0 +1,40 @@
+#!/bin/bash
+#
+# pre-commit — harness 强制闸门的入口（bash 包装）
+#
+# 职责：找到可用的 Python 解释器，把实际控制权交给 .githooks/pre-commit.py。
+# 之所以拆两层：Python 在 Windows / macOS / Linux 上的命令名不一致
+# （python3 / python / py），逻辑放 Python 里才能保证跨平台行为一致。
+#
+# 豁免：HARNESS_SKIP=1 git commit ...
+#
+
+# 已经设了豁免，直接放行（不必再找 Python）
+if [ -n "${HARNESS_SKIP:-}" ]; then
+    exit 0
+fi
+
+PY=""
+for c in python3 python py; do
+    if command -v "$c" >/dev/null 2>&1; then
+        PY="$c"
+        break
+    fi
+done
+
+if [ -z "$PY" ]; then
+    # 找不到 Python 时选择 fail-open（环境问题不该阻断提交），但必须显式告知，
+    # 否则"门禁没生效"会变成"门禁通过"的假象。
+    echo "[harness] ⚠️  未找到 Python 解释器，本次提交跳过 harness 检查。"
+    echo "[harness]    这意味着闸门未生效，请手动确认 progress.md 已更新、代码无占位实现。"
+    echo "[harness]    修复：安装 Python 并确保在 PATH 中。"
+    exit 0
+fi
+
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
+if [ -z "$ROOT" ]; then
+    echo "[harness] 无法定位仓库根，跳过检查。" >&2
+    exit 0
+fi
+
+exec "$PY" "$ROOT/.githooks/pre-commit.py" "$@"

@@ -1,0 +1,32 @@
+{
+  "version": "1.0",
+  "last_updated": "{{DATE}}",
+  "project": "{{PROJECT_NAME}}",
+  "description": "功能实现状态追踪。只翻转 status，禁止删除条目。",
+  "legend": {
+    "missing": "未实现",
+    "partial": "部分实现",
+    "completed": "已实现并由 evidence 指向的真实路径核实",
+    "blocked": "被阻塞，notes 说明原因",
+    "deprecated": "已废弃，notes 说明原因（保留条目，靠 git 历史找回）"
+  },
+  "features": [
+    {
+      "id": "{{SUBSYS}}-P0-1",
+      "title": "示例：核心用户旅程打通（Walking Skeleton）",
+      "spec": ".harness/planning/SPEC-TEMPLATE.md",
+      "status": "missing",
+      "evidence": "",
+      "notes": "Phase 0 必做：用最薄但每层都真实的路径跑通端到端"
+    }
+  ],
+  "summary": {
+    "total": 1,
+    "completed": 0,
+    "partial": 0,
+    "missing": 1,
+    "blocked": 0,
+    "deprecated": 0,
+    "completion_rate": "0%"
+  }
+}

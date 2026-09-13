@@ -1,0 +1,34 @@
+# 依赖
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 构建产物
+dist/
+build/
+out/
+.next/
+.nuxt/
+target/
+
+# 环境
+.env
+.env.local
+*.log
+
+# 编辑器（保留 harness 配置）
+.idea/
+.vscode/
+*.swp
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# 自检产物（模板自带，不进项目）
+_selftest/
