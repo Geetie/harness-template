@@ -72,8 +72,17 @@ REQUIRED_FILES = [
 REQUIRED_SCRIPTS = [
     "scripts/no_placeholder_guard.py",
     "scripts/check_integration.py",
+    "scripts/state_health.py",
     "scripts/init.py",
 ]
+
+# 状态文件体积上限（与 state_health.py 保持一致；超限 → 状态文件正在变成 Agent 读不完的档案）
+STATE_LIMITS = {
+    "AGENTS.md": (16 * 1024, 150),
+    ".harness/state/progress.md": (32 * 1024, 300),
+    ".harness/state/session-handoff.md": (16 * 1024, 200),
+    ".harness/state/feature_list.json": (64 * 1024, None),
+}
 
 
 def find_repo_root() -> str:
@@ -141,6 +150,36 @@ def check_hooks(root: str) -> list[tuple[str, bool, str]]:
     return out
 
 
+def check_state_limits(root: str) -> list[tuple[str, bool, str]]:
+    """状态文件是否膨胀超限。
+
+    只增不减的状态文件最终会变成 Agent 读不动也读不完的档案——
+    那是发生在磁盘上的 context rot。这里做最轻量的体积/行数把关。
+    """
+    over: list[str] = []
+    for rel, (max_bytes, max_lines) in STATE_LIMITS.items():
+        p = os.path.join(root, rel)
+        if not os.path.isfile(p):
+            continue
+        size = os.path.getsize(p)
+        if size > max_bytes:
+            over.append(f"{rel} {size // 1024}KB>{max_bytes // 1024}KB")
+            continue
+        if max_lines:
+            try:
+                with open(p, "r", encoding="utf-8", errors="ignore") as f:
+                    n = sum(1 for _ in f)
+            except OSError:
+                continue
+            if n > max_lines:
+                over.append(f"{rel} {n}行>{max_lines}行")
+
+    if over:
+        return [("状态文件未超限", False,
+                 "；".join(over) + " → 跑 python scripts/state_health.py --archive")]
+    return [("状态文件未超限", True, "")]
+
+
 def run_commands(root: str, cfg: dict) -> list[tuple[str, bool, str]]:
     out = []
     cmds = (cfg or {}).get("commands", {})
@@ -185,6 +224,7 @@ def main(argv=None) -> int:
     results = []
     results += [(c, n, ok, d) for (c, n, ok, d) in check_structure(root)]
     results += [( "②状态层", n, ok, d) for (n, ok, d) in check_state(root)]
+    results += [("②状态层", n, ok, d) for (n, ok, d) in check_state_limits(root)]
     results += [("③验证层", n, ok, d) for (n, ok, d) in check_hooks(root)]
     if not args.skip_commands:
         results += [("③验证层", n, ok, d) for (n, ok, d) in run_commands(root, cfg or {})]

@@ -44,7 +44,67 @@
 
 ---
 
-## 4. 写入格式速查
+## 4. 生命周期与归档（最容易被忽略的一节）
+
+> **核心认识**：状态文件**只增不减**，最终会变成 Agent 读不动也读不完的档案。
+> **这与 harness 要治的 context rot 是同一个病，只是发生在磁盘上。**
+
+**实测教训（2026-09 三个真实项目）**：
+
+| 项目 | feature_list.json | progress.md | AGENTS.md |
+|---|---|---|---|
+| A | **192 KB** | **122 KB** | 144 行 |
+| B | 34 KB | 59 KB | **540 行** |
+| C | 22 KB | 45 KB | 66 行 |
+
+192 KB 的 JSON ≈ **50K token** —— Agent 光读状态就烧掉半个上下文，而且读完还抓不住重点。
+根因不是"写得不规范"，而是**只规定了怎么写（一行式），没规定留多久（生命周期）**。
+
+### 4.1 体积上限（硬性）
+
+| 文件 | 上限 | 超限动作 |
+|---|---|---|
+| `AGENTS.md` | 16 KB / **150 行** | 外推内容到 skills / memory |
+| `progress.md` | 32 KB / 300 行 | 归档变更日志（保留最近 120 行） |
+| `session-handoff.md` | 16 KB / 200 行 | 人工精简（它是"当前会话"语义，不自动归档） |
+| `feature_list.json` | 64 KB / 150 条目 | 归档超配额的 completed 条目（保留最近 60 条） |
+
+### 4.2 归档机制
+
+```bash
+python scripts/state_health.py                          # 检查是否超限
+python scripts/state_health.py --dry-run --archive      # 预览会归档什么（先看）
+python scripts/state_health.py --archive                # 执行
+```
+
+归档去向：`.harness/state/archive/`
+- `progress-log-<YYYY-MM>.md` —— 变更日志的历史部分
+- `feature_list-<YYYY-MM>.json` —— 已完成的旧条目
+
+**归档 ≠ 删除**：git 完整保留历史，需要追溯时去归档文件；**Agent 不再读归档区**，这才是省 token 的关键。
+
+### 4.3 与「禁止删条目」规则的关系
+
+`feature_list.json` 的规则是「**禁止删条目，只翻转状态**」——
+这条规则保住了可追溯性，但也导致了无限膨胀（旧条目永远占着 Agent 的上下文）。
+
+**正确的完整表述**：
+> 禁止**删除**条目；但 `completed` 状态且**超出保留配额的条目应当归档**。
+> 归档是移动，不是删除——git 历史与归档文件都还在。
+
+### 4.4 状态层分裂检测
+
+状态层**只允许 `state/` 三件**。以下信号说明出现了"第二套状态"（两套并存必然漂移）：
+
+- 根目录出现 `harness-progress.txt` / `harness-tasks.json` / `*-progress.log` 之类
+- 出现 `.harness-active` 之类的空标记文件
+- 多个文件都在记"进度"
+
+`state_health.py` 会自动检测并报警。历史流水请归档，空文件请删除。
+
+---
+
+## 5. 写入格式速查
 
 | 文件 | 格式 |
 |---|---|

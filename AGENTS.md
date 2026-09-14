@@ -83,18 +83,9 @@
 
 ### 5.1 DoD（Definition of Done，逐条打勾才算完成）
 
-```
-□ AC-01 走通：<动作> → <可观察结果>
-□ AC-02 持久化：关掉 → 重开 → 数据还在（write-read-reload）
-□ AC-03 集成：在 UI 上能点到，不是只能靠 curl / 单测调用
-□ AC-04 错误路径：<异常输入> → 明确提示，不 500、不静默、不吞异常
-□ AC-05 边界：<空/超大/非法> → 明确拒绝，不崩溃
-□ AC-06 测试：≥1 条走真实依赖的集成测试（真实 DB / 文件 / 网络），不全是 mock
-□ AC-07 无占位：`python scripts/no_placeholder_guard.py {{CODE_ROOT}}` 通过
-□ AC-08 类型检查 / lint / 测试全绿，贴出真实输出与退出码
-```
+**八项**：① 走通 ② 持久化（write-read-reload）③ UI 上能点到 ④ 错误路径 ⑤ 边界 ⑥ ≥1 条真实依赖集成测试 ⑦ 无占位 ⑧ 质量闸门全绿（附真实输出与退出码）
 
-模板与填写指南 → `.harness/delivery/DoD-TEMPLATE.md`
+细则与可复制模板 → `.harness/delivery/DoD-TEMPLATE.md`
 
 ### 5.2 计划骨架（新功能开工前）
 
@@ -125,13 +116,14 @@
 ## 6. 验证
 
 ```bash
-python scripts/init.py                                   # 环境健康检查 + 基线
-{{TEST_COMMAND}}                                         # 测试
-python scripts/no_placeholder_guard.py {{CODE_ROOT}}     # 反占位符
-python scripts/check_integration.py {{CODE_ROOT}}        # 集成检查
+python scripts/init.py                                # 环境 + 状态健康检查
+python scripts/no_placeholder_guard.py {{CODE_ROOT}}  # 反占位符
+python scripts/check_integration.py {{CODE_ROOT}}     # 集成检查（孤儿模块）
+python scripts/state_health.py                        # 状态文件是否膨胀超限
+{{TEST_COMMAND}}                                      # 测试
 ```
 
-提交前三项全绿；完整规范 → `.harness/VERIFICATION.md`
+提交前全绿；完整规范 → `.harness/VERIFICATION.md`
 
 ---
 

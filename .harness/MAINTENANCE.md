@@ -10,6 +10,9 @@
 1. **代码 + harness 同一个 commit** —— `.githooks/pre-commit` 强制。代码改了但 harness 没动 = 提交被拦。
 2. **踩坑必回写坑表** —— `.harness/memory/lessons.md` 是 hook 强制必更项（与 progress 同级）。
 3. **状态落盘不进 context** —— 任何跨会话需要记住的东西，写进 `state/`，不许只留在对话里。
+4. **状态文件有体积上限** —— `AGENTS.md` ≤150 行、`progress.md` ≤32 KB、`feature_list.json` ≤64 KB。
+   超限执行 `python scripts/state_health.py --archive` 归档。
+   > 只增不减的状态文件最终会变成 Agent 读不完的档案——**那是发生在磁盘上的 context rot**。
 
 豁免（纯格式化 / 纯测试数据等不涉及功能逻辑的变更）：`HARNESS_SKIP=1 git commit ...`
 
