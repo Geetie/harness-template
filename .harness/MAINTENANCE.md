@@ -154,6 +154,7 @@ python scripts/harness_lint.py    # 漂移：死链/绝对路径/基线/注册�
 | 2026-09-14 | R3 | 反模式库 `harness-antipatterns.md`（12 条）+ 工具收尾 | 通过 |
 | 2026-09-14 | R4 | **决策演进层**：决策三件套（台账/指针/失效水位）+ L008-L011 + 可插拔架构（11 模块/3 档位）+ 单一真相源 `module_manifest.py` + GLOBAL-LESSONS 57 条 | lint 0E/0W · init 30/30 · 死链 33→0 |
 | 2026-09-14 | R5 | **自审修复**（4 处）：①移除臆想路径 `.githooks/hooks.json` ②L004 加模块关闭豁免 ③L010 跳过围栏代码块（`iter_lines_skip_fence`）④`read()` 失败留痕 + `--explain-skip`。新增教训 S14/P23/P24。新增模板仓库模式（`TEMPLATE-REPO` 标记） | 三档位 lint 全 0E · init 19/27/31 · L010 双向对照 3/3 PASS |
+| 2026-09-15 | R7 | **代码规范层 + 设计层**：`quality.py`（ESLint/Prettier/ruff 接线，工具未装=跳过不算失败）+ `design_smell.py`（SM001-SM005 技术债信号）+ `DESIGN-PRINCIPLES.md`（SOLID 判据/模式选择反向清单）+ SPEC「设计决策四问」。新增 2 个模块共 14 个。顺带 ruff format 模板自身 12 个脚本 | lint 0E/0W · init 38/38 · 三档位 0E · 噪音 363→31 |
 | 2026-09-15 | R6-doc | 候选清单同步至 **64 条**（28 条可机器检查）；GLOBAL-LESSONS 增至 64 条（UG 29 / TPL 18 / AI 7 / SY 7 / 个人铁律 3） | lint 0E/0W |
 | 2026-09-15 | R6 | **升级层 `upgrade`**：`sync_template.py` + `sync_lib.py` 三向合并（base/ours/theirs）；`config.json.template_sync` 记录基线与替换映射；`--check/--apply/--force/--adopt-now`。**顺带修 3 个老 bug**：①`substitute` 用 `startswith(".")` 把 `.harness/` 整个跳过 → 占位符从未替换 ②文本模式写文件把 LF 转成 CRLF ③版本号 5 处漂移 → 统一到 `harness_version.py`。新增教训 S15/S16/P25/P26 | 五向对照全 PASS（已是最新/可更新/保护本地/无基线保守/错误边界）· 三档位 0E · init 33/33 |
 
