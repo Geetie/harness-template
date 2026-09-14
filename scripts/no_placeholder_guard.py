@@ -40,7 +40,9 @@ import sys
 from dataclasses import dataclass, asdict
 from typing import Iterable, Iterator
 
-VERSION = "1.0.0"
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# 版本来自单一真相源（此前各脚本各写一份，实测已漂移：lint 1.1.1 / guard 1.0.0）
+from harness_version import TEMPLATE_VERSION as VERSION  # noqa: E402
 
 
 def _norm(path: str) -> str:

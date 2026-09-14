@@ -53,7 +53,9 @@ import sys
 from dataclasses import dataclass, asdict
 from datetime import datetime
 
-VERSION = "1.0.0"
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# 版本来自单一真相源（此前各脚本各写一份，实测已漂移：lint 1.1.1 / health 1.0.0）
+from harness_version import TEMPLATE_VERSION as VERSION  # noqa: E402
 
 DEFAULT_LIMITS = {
     "AGENTS.md": {"max_bytes": 16 * 1024, "max_lines": 150},

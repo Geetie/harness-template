@@ -154,8 +154,9 @@ python scripts/harness_lint.py    # 漂移：死链/绝对路径/基线/注册�
 | 2026-09-14 | R3 | 反模式库 `harness-antipatterns.md`（12 条）+ 工具收尾 | 通过 |
 | 2026-09-14 | R4 | **决策演进层**：决策三件套（台账/指针/失效水位）+ L008-L011 + 可插拔架构（11 模块/3 档位）+ 单一真相源 `module_manifest.py` + GLOBAL-LESSONS 57 条 | lint 0E/0W · init 30/30 · 死链 33→0 |
 | 2026-09-14 | R5 | **自审修复**（4 处）：①移除臆想路径 `.githooks/hooks.json` ②L004 加模块关闭豁免 ③L010 跳过围栏代码块（`iter_lines_skip_fence`）④`read()` 失败留痕 + `--explain-skip`。新增教训 S14/P23/P24。新增模板仓库模式（`TEMPLATE-REPO` 标记） | 三档位 lint 全 0E · init 19/27/31 · L010 双向对照 3/3 PASS |
+| 2026-09-15 | R6 | **升级层 `upgrade`**：`sync_template.py` + `sync_lib.py` 三向合并（base/ours/theirs）；`config.json.template_sync` 记录基线与替换映射；`--check/--apply/--force/--adopt-now`。**顺带修 3 个老 bug**：①`substitute` 用 `startswith(".")` 把 `.harness/` 整个跳过 → 占位符从未替换 ②文本模式写文件把 LF 转成 CRLF ③版本号 5 处漂移 → 统一到 `harness_version.py`。新增教训 S15/S16/P25/P26 | 五向对照全 PASS（已是最新/可更新/保护本地/无基线保守/错误边界）· 三档位 0E · init 33/33 |
 
-### 模板仓库特有的两条纪律
+### 模板仓库特有的三条纪律
 
 1. **脚手架文件保持未填写**：`state/progress.md`、`memory/lessons.md`、
    `planning/SPEC-TEMPLATE.md` 等随项目生成的文件，在本仓库里**永远不填**。
@@ -163,3 +164,18 @@ python scripts/harness_lint.py    # 漂移：死链/绝对路径/基线/注册�
 2. **验证必须覆盖"生成出来的项目"**：本仓库自己 lint 通过 ≠ 生成的骨架能用。
    每次改动都要跑 `new_project.py --preset {minimal,standard,full}` 并在产物里
    各跑一遍 `init.py` / `harness_lint.py`（这是可插拔的真实验收面）。
+3. **版本号只改一处**：所有脚本的版本都从 `scripts/harness_version.py` 导入。
+   发版三步：①改 `TEMPLATE_VERSION` ②本表加一行 ③`git tag v<版本>` + push。
+   跨 MAJOR 时生成的项目会拒绝自动同步（需人工迁移）。
+
+### 升级层使用说明（给已生成的项目）
+
+```bash
+python scripts/sync_template.py --check              # 只看差异（默认，不写文件）
+python scripts/sync_template.py --apply              # 应用"可安全更新 + 新增"，冲突跳过
+python scripts/sync_template.py --apply --force      # 连冲突一起覆盖（丢本地改动）
+python scripts/sync_template.py --adopt-now          # 旧项目补基线（不复制文件）
+python scripts/sync_template.py --template <路径>     # 手动指定模板仓库
+```
+判定依据是 **三向合并**（见 `scripts/sync_lib.py` 顶部说明）：
+模板改了而项目没动 → 覆盖；项目改过 → 保护；两边都改 → 冲突，人工裁决。

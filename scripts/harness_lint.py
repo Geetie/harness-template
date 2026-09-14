@@ -63,7 +63,8 @@ from datetime import date, datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from module_manifest import MODULES, module_paths, norm_rel  # noqa: E402, F401
 
-VERSION = "1.1.1"
+# 版本来自单一真相源（此前各脚本各写一份，实测已漂移：lint 1.1.1 / init 1.1.0）
+from harness_version import TEMPLATE_VERSION as VERSION  # noqa: E402
 
 # ── 读文件失败登记簿 ──
 # 存在的理由：read() 返回 None 会让所有检查静默跳过，"没读到"与"读到且干净"

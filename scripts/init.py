@@ -62,8 +62,6 @@ import os
 import subprocess
 import sys
 
-VERSION = "1.1.0"
-
 # ── 模块定义（可插拔）──
 # 为什么需要：模板此前是焊死的六层，小项目被迫背全套餐。
 # 现在每个模块可独立启停，缺失时**显式降级、不报错**。
@@ -78,6 +76,9 @@ from module_manifest import (  # noqa: E402
     module_required,
     resolve_modules as _resolve_from_manifest,
 )
+
+# 版本来自单一真相源（此前各脚本各写一份，实测已漂移：lint 1.1.1 / init 1.1.0）
+from harness_version import TEMPLATE_VERSION as VERSION  # noqa: E402
 
 MODULE_DEPS = module_deps()
 MODULE_LAYERS = module_layers()

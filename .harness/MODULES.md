@@ -43,6 +43,7 @@
 | **规划层** | `planning` | — | `CONSTITUTION.md` / `SPEC-TEMPLATE.md` | 需求/设计/任务无结构 |
 | **反占位门禁** | `placeholder-guard` | `verification` | `no_placeholder_guard.py` | TODO/桩实现混入提交 |
 | **接线体检** | `integration-check` | `verification` | `check_integration.py`（孤儿模块检测） | 写完的模块没接上 |
+| **升级层** | `upgrade` | `verification` | `sync_template.py` + `sync_lib.py`（三向合并拉模板更新） | 项目与模板脱钩，模板改进永远拿不到 |
 
 **元文档（不属任何模块，始终保留）**：
 `README.md` · `.harness/README.md` · `.harness/MAINTENANCE.md` · `.harness/MODULES.md`
@@ -89,12 +90,15 @@
 |---|---|---|
 | **minimal** | `instructions` / `state` / `verification` / `memory` | 小工具、脚本、实验 |
 | **standard** | minimal + `delivery` / `planning` / `placeholder-guard` / `skills` | 常规项目 |
-| **full** | standard + `routing` / `decisions` / `integration-check` | 长期演进、多模块、多 Agent 协作 |
+| **full** | standard + `routing` / `decisions` / `integration-check` / `upgrade` | 长期演进、多模块、多 Agent 协作 |
 
 用 `new_project.py --preset full` 选择；也可在 config.json 里逐个覆盖。
 
 > 档位定义在 `module_manifest.PRESETS`，与上表一一对应。
 > 依赖会被**自动补齐**，但补齐时打印告警（铁律 ②）。
+>
+> `upgrade` 只在 full 档：小项目通常生命周期短，不需要"拉模板更新"这套机制；
+> 且它会往 config.json 写入同步基线，给项目增加一点状态。
 
 ---
 

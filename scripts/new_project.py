@@ -42,7 +42,7 @@ import subprocess
 import sys
 from datetime import date
 
-VERSION = "1.1.0"
+VERSION = "1.1.0"  # 占位，下面被单一真相源覆盖
 
 # 模块归属从共享清单读（单一真相源）—— init.py / new_project.py / harness_lint.py
 # 必须认识同一份模块表，否则"关不干净"或"关掉还被判死链"。详见 module_manifest.py。
@@ -57,18 +57,18 @@ from module_manifest import (  # noqa: E402
     norm_rel,
 )
 
-# 复制时排除
+# 版本来自单一真相源（此前各脚本各写一份，实测已漂移：lint 1.1.1 / new_project 1.1.0）。
+# 它会被写进生成项目的 config.json，供 sync_template.py 判断"要不要升级"，
+# 因此必须与模板仓库的 git tag 一致（发版时只需改 harness_version.py）。
+import sync_lib as SYNC  # noqa: E402
+from harness_version import TEMPLATE_VERSION as VERSION  # noqa: E402, F811
+
+# 复制时排除（不复制清单本身来自 module_manifest，单一真相源）
 EXCLUDE_TOP = {"_selftest", ".git", "__pycache__", "node_modules", ".venv"}
 EXCLUDE_EXT = {".pyc", ".pyo"}
-# 模板维护者自己的文件，不随项目生成（审核稿/临时分析）
-# 注意要写**完整相对路径**：早先只写 basename 时，memory 子目录下的同名文件
-# 因为路径比较不匹配而逃过过滤，被复制进了新项目（交付泄漏，已修）。
-EXCLUDE_FILES = {f.replace("\\", "/") for f in _MANIFEST_EXCLUDE} | {
-    "_REVIEW-候选清单.md",
-    # 模板仓库自身标记：生成的项目不是模板仓库，绝不能继承它。
-    # 一旦泄漏，新项目的 pre-commit 会误判"我是模板"，从而不去强制 progress.md 更新。
-    ".harness/TEMPLATE-REPO",
-}
+# 直接复用共享清单：此前这里另写一份并集，结果 sync_template 用的又是另一份，
+# 三边不一致 → 同步器把"故意不复制的评审稿"当成"可新增项"反复报。
+EXCLUDE_FILES = {norm_rel(f) for f in _MANIFEST_EXCLUDE}
 
 # ── 模块 → 它拥有的文件（关闭该模块则不复制这些文件）──
 # 铁律：**关掉的模块不留残骸** —— 生成后删除会漏（人和 Agent 都会漏），
@@ -213,15 +213,24 @@ def substitute(root: str, mapping: dict) -> tuple[int, dict]:
     # 否则"待填清单"里会混入自身，制造噪音。
     self_name = os.path.basename(__file__)
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in EXCLUDE_TOP and not d.startswith(".")]
+        # ⚠️ 只排除 .git，**不要写成 `not d.startswith(".")`** ——
+        # 那会把 .harness/ 整个跳过，于是 .harness 下所有文件的占位符从未被替换
+        # （真实 bug：progress.md 的 {{DATE}}/{{BRANCH}}、CONSTITUTION.md 的
+        #  确立日期 全是原样，L007 因此长期报"残留占位符"，被误当成"待人工填写"）。
+        # 后患还包括：同步器拿"替换后的项目"比"替换后的模板"时口径不一致。
+        dirnames[:] = [d for d in dirnames if d not in EXCLUDE_TOP and d != ".git"]
         for fn in filenames:
             if fn == self_name:
                 continue
             p = os.path.join(dirpath, fn)
             if not is_text(p):
                 continue
+            # ⚠️ newline="" 必须加：文本模式默认会把 \n 转成 \r\n（Windows），
+            # 于是"被替换过的文件"是 CRLF、"没占位符直接复制的"是 LF，
+            # 项目内部换行符不一致；更糟的是同步器按字节算哈希时，
+            # 模板侧 LF vs 项目侧 CRLF → 内容明明相同却被判为"有更新"（实测踩到）。
             try:
-                with open(p, "r", encoding="utf-8") as f:
+                with open(p, "r", encoding="utf-8", newline="") as f:
                     content = f.read()
             except (OSError, UnicodeDecodeError):
                 continue
@@ -246,7 +255,7 @@ def substitute(root: str, mapping: dict) -> tuple[int, dict]:
 
             new = PLACEHOLDER_RE.sub(repl, content)
             if new != content:
-                with open(p, "w", encoding="utf-8") as f:
+                with open(p, "w", encoding="utf-8", newline="") as f:
                     f.write(new)
     return replaced, remaining
 
@@ -360,6 +369,9 @@ def main(argv=None) -> int:
     ap.add_argument("--in-place", action="store_true", help="在当前目录原地初始化")
     ap.add_argument("--target", default=None, help="目标父目录（生成 <target>/<name>）")
     ap.add_argument("--yes", action="store_true", help="跳过确认")
+    ap.add_argument("--force", action="store_true",
+                    help="配合 --in-place：允许在模板仓库本体上就地初始化"
+                         "（会把模板占位符写死，通常不该这么做）")
     ap.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
     args = ap.parse_args(argv)
 
@@ -370,6 +382,18 @@ def main(argv=None) -> int:
 
     if args.in_place:
         dst = template_root
+        # 安全闸：--in-place 会对**当前这棵树**做占位符替换。
+        # 如果这棵树是模板仓库本体，替换会把 {{PROJECT_NAME}} 之类的占位符
+        # 就地写死，模板从此不可用（而且 .harness 现已纳入替换范围，破坏面更大）。
+        # 真要在模板仓库上跑，必须显式 --force 表明你知道后果。
+        if os.path.isfile(os.path.join(dst, ".harness", "TEMPLATE-REPO")) \
+                and not args.force:
+            print("[!] 拒绝执行：当前目录是 harness 模板仓库本体"
+                  "（检测到 .harness/TEMPLATE-REPO）。\n"
+                  "    --in-place 会把模板里的占位符就地写死，模板将不可再用。\n"
+                  "    若确要如此，加 --force；否则请用 --target <父目录> 生成新项目。",
+                  file=sys.stderr)
+            return 2
     else:
         if not args.target:
             print("[!] 非 --in-place 模式必须提供 --target", file=sys.stderr)
@@ -395,6 +419,25 @@ def main(argv=None) -> int:
     replaced, remaining = substitute(dst, mapping)
     print(f"替换占位符 {replaced} 处")
 
+    # 记录模板基线快照（**必须在占位符替换之后**）
+    # 用途：将来 sync_template.py 做三向合并时，用它判断"差异到底是谁造成的"。
+    # 若记在替换之前，用户填了占位符就会被误判成"项目改过"→ 从不敢同步；
+    # 记在替换之后，基线 = 项目刚生成时的样子，用户后续填写才被正确识别为本地改动。
+    baseline_rels = []
+    for dp, dn, fn in os.walk(dst):
+        dn[:] = [d for d in dn if d not in (".git", "__pycache__", "node_modules", ".venv")]
+        for f in fn:
+            rel = os.path.relpath(os.path.join(dp, f), dst).replace("\\", "/")
+            if not SYNC.is_never_sync(rel):
+                baseline_rels.append(rel)
+    base_snap, base_fail = SYNC.snapshot(dst, baseline_rels)
+    if base_fail:
+        # 不静默：基线记不全 = 将来同步时会把"读不到的文件"误判成冲突
+        print(f"[!] {len(base_fail)} 个文件未能记入同步基线（将来同步会保守跳过）:",
+              file=sys.stderr)
+        for s in base_fail[:5]:
+            print(f"    · {s}", file=sys.stderr)
+
     # 生成 config.json
     cfg_dir = os.path.join(dst, ".harness")
     os.makedirs(cfg_dir, exist_ok=True)
@@ -406,6 +449,18 @@ def main(argv=None) -> int:
         "code_root": preset["code_root"],
         "commands": preset["commands"],
         "baseline": {"test": ""},
+        SYNC.SYNC_FIELD: {
+            "template_version": VERSION,
+            "generated_at": date.today().isoformat(),
+            "files": base_snap,
+            # 替换映射必须一起存：模板文件里是 {{PROJECT_NAME}} 等占位符，
+            # 项目里是替换后的实值。同步器若拿模板原文直接比，
+            # **每个新项目都会被误判"模板有更新"**，一同步就把占位符覆盖回去
+            # （实测：全新项目立刻报 2 项"可安全更新"）。
+            # 存下来，同步器就能对模板侧施加同样的替换，让三边口径一致。
+            # ⚠️ 必须用生成时的 DATE，不能用当前日期 —— 否则含日期的文件永远显示有更新。
+            "substitutions": mapping,
+        },
     }
     cfg_path = os.path.join(cfg_dir, "config.json")
     with open(cfg_path, "w", encoding="utf-8") as f:

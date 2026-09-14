@@ -65,6 +65,10 @@ MODULES: dict[str, dict] = {
             ".harness/hooks/hooks.json",
             ".githooks/pre-commit",
             ".githooks/pre-commit.py",
+            # harness_version.py 必须归 verification：它被 init/lint/new_project/guard
+            # 全部 import 作为版本单一真相源，若随某个可选模块一起被关掉，
+            # 其余脚本会立刻 ImportError。verification 是三档位都有的模块。
+            "scripts/harness_version.py",
             # 注意：不要在这里写 ".githooks/hooks.json" —— 该文件从不存在，
             # 是早期版本凭印象写下的臆想路径（真实文件是 .harness/hooks/hooks.json）。
             # 后果：init 的"必需文件清单"永远少一项、可插拔自检报一条假缺失。
@@ -139,6 +143,17 @@ MODULES: dict[str, dict] = {
         ],
         "deps": ["instructions"],
     },
+    "upgrade": {
+        "desc": "升级层：把模板的改进三向合并回已生成的项目（sync_template.py）",
+        "layer": "③验证层",
+        "owned": [
+            "scripts/sync_template.py",
+            "scripts/sync_lib.py",
+        ],
+        # 依赖 verification：sync_template 需要 harness_version（版本单一真相源），
+        # 而它归 verification 所有。缺了会 ImportError，不是"优雅降级"。
+        "deps": ["verification"],
+    },
     "placeholder-guard": {
         # guard:allow —— 本行在描述「占位符守卫」这个模块，不是占位实现
         "desc": "占位符守卫：提交前扫未完成标记与占位表达",
@@ -178,6 +193,7 @@ MODULE_REQUIRED: dict[str, list[str]] = {
     "skills": [".harness/skills/orientation/SKILL.md"],
     "placeholder-guard": ["scripts/no_placeholder_guard.py"],
     "integration-check": ["scripts/check_integration.py"],
+    "upgrade": ["scripts/sync_template.py", "scripts/sync_lib.py"],
 }
 
 # 三个预置档位：从少到多。minimal 是"能跑起来的最小可信骨架"。
@@ -187,7 +203,7 @@ PRESETS: dict[str, list[str]] = {
                  "delivery", "planning", "placeholder-guard", "skills"],
     "full": ["instructions", "state", "verification", "memory", "delivery",
              "routing", "decisions", "planning", "skills",
-             "placeholder-guard", "integration-check"],
+             "placeholder-guard", "integration-check", "upgrade"],
 }
 
 # 元文档：无论关掉哪些模块都要保留（它们解释"这个模板是什么"）
@@ -200,9 +216,17 @@ ALWAYS_FILES = [
     ".harness/README.md",
 ]
 
-# 不复制到新项目的文件（评审稿、临时产物）
+# 不复制到新项目的文件（评审稿、模板仓库自身标记、临时产物）
+# ⚠️ 必须写**完整相对路径**：早先只写 basename 时，memory 子目录下的同名文件
+#    因路径比较不匹配而逃过过滤，被复制进了新项目（交付泄漏，已修）。
+# 这里也是单一真相源：new_project（复制侧）与 sync_template（比较侧）共用，
+# 否则同步器会把"模板有但故意不复制"的文件当成"新增项"反复报。
 EXCLUDE_FILES = {
     ".harness/memory/_REVIEW-候选清单.md",
+    # 模板仓库自身标记：生成的项目不是模板仓库，绝不能继承它。
+    # 一旦泄漏，新项目的 pre-commit 会误判"我是模板"，
+    # 从而不去强制 progress.md 更新 —— 门禁静默失效。
+    ".harness/TEMPLATE-REPO",
 }
 
 
