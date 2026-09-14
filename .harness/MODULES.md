@@ -44,6 +44,8 @@
 | **反占位门禁** | `placeholder-guard` | `verification` | `no_placeholder_guard.py` | TODO/桩实现混入提交 |
 | **接线体检** | `integration-check` | `verification` | `check_integration.py`（孤儿模块检测） | 写完的模块没接上 |
 | **升级层** | `upgrade` | `verification` | `sync_template.py` + `sync_lib.py`（三向合并拉模板更新） | 项目与模板脱钩，模板改进永远拿不到 |
+| **代码规范层** | `code-quality` | `verification` | `quality.py`（ESLint/Prettier/ruff 接线）+ `CODE-QUALITY.md` | 风格问题不再被拦，只能靠 review 兜 |
+| **设计层** | `design` | — | `design_smell.py`（技术债信号）+ `DESIGN-PRINCIPLES.md`（SOLID 判据/模式选择） | 缺"写代码前的设计判断"，债靠事后还 |
 
 **元文档（不属任何模块，始终保留）**：
 `README.md` · `.harness/README.md` · `.harness/MAINTENANCE.md` · `.harness/MODULES.md`
@@ -90,7 +92,7 @@
 |---|---|---|
 | **minimal** | `instructions` / `state` / `verification` / `memory` | 小工具、脚本、实验 |
 | **standard** | minimal + `delivery` / `planning` / `placeholder-guard` / `skills` | 常规项目 |
-| **full** | standard + `routing` / `decisions` / `integration-check` / `upgrade` | 长期演进、多模块、多 Agent 协作 |
+| **full** | standard + `routing` / `decisions` / `integration-check` / `upgrade` / `design` | 长期演进、多模块、多 Agent 协作 |
 
 用 `new_project.py --preset full` 选择；也可在 config.json 里逐个覆盖。
 

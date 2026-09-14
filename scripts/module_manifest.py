@@ -153,6 +153,15 @@ MODULES: dict[str, dict] = {
         # 依赖 verification：pre-commit 由它装载，且 quality.py 复用版本真相源。
         "deps": ["verification"],
     },
+    "design": {
+        "desc": "设计层：SOLID 判据 + 模式选择 + 技术债信号检测（写代码前的判断）",
+        "layer": "⑧规划层",
+        "owned": [
+            "scripts/design_smell.py",
+            ".harness/design/DESIGN-PRINCIPLES.md",
+        ],
+        "deps": [],
+    },
     "upgrade": {
         "desc": "升级层：把模板的改进三向合并回已生成的项目（sync_template.py）",
         "layer": "③验证层",
@@ -211,6 +220,7 @@ MODULE_REQUIRED: dict[str, list[str]] = {
     "placeholder-guard": ["scripts/no_placeholder_guard.py"],
     "integration-check": ["scripts/check_integration.py"],
     "code-quality": ["scripts/quality.py", ".harness/CODE-QUALITY.md"],
+    "design": ["scripts/design_smell.py", ".harness/design/DESIGN-PRINCIPLES.md"],
     "upgrade": ["scripts/sync_template.py", "scripts/sync_lib.py"],
 }
 
@@ -242,6 +252,7 @@ PRESETS: dict[str, list[str]] = {
         "integration-check",
         "upgrade",
         "code-quality",
+        "design",
     ],
 }
 
