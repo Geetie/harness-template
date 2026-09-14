@@ -73,6 +73,7 @@ REQUIRED_SCRIPTS = [
     "scripts/no_placeholder_guard.py",
     "scripts/check_integration.py",
     "scripts/state_health.py",
+    "scripts/harness_lint.py",
     "scripts/init.py",
 ]
 

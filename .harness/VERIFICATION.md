@@ -12,6 +12,8 @@
 python scripts/init.py                                    # 环境健康检查（结构+状态+钩子+命令）
 python scripts/no_placeholder_guard.py <code_root>         # 反占位符
 python scripts/check_integration.py <code_root>            # 集成检查（孤儿模块）
+python scripts/state_health.py                             # 状态文件是否膨胀超限
+python scripts/harness_lint.py                             # harness 内部一致性（漂移检测）
 ```
 
 > ⚠️ **扫描范围只写 `code_root`，不要写 `.`**
@@ -89,7 +91,34 @@ HARNESS_SKIP=1 git commit -m "chore: format"
 
 ---
 
-## 5. 钩子扩展
+## 5. harness 一致性检查（harness_lint）
+
+**为什么需要**：harness 文档之间互相引用、互相复制数字、互相登记文件名。
+只要一处没跟上，就会让 Agent **遵循过期规则**——比缺失规则更危险。
+
+```bash
+python scripts/harness_lint.py                     # 默认只扫治理文档（低噪音）
+python scripts/harness_lint.py --only L003         # 只查基线漂移
+python scripts/harness_lint.py --scope all         # 全量盘库（噪音大，一次性用）
+```
+
+| 规则 | 检查什么 | 为什么 |
+|---|---|---|
+| `L001` | 引用的文件在仓库内找不到 | 重构改名后引用未更新 |
+| `L002` | 硬编码绝对路径（指向本仓库的） | 换 clone 位置/换机器即失效 |
+| `L003` | 基线数字多处不一致 | 实测曾出现同一基线在四个文件里是四个值 |
+| `L004` | ROUTER 注册表与磁盘不符 | 注册了但文件没了 / 有文件没注册 |
+| `L005` | 文档"最后更新"距今过久 | 过期规则比缺失规则更有害 |
+| `L006` | 强制阅读清单过长 | 一次性全读是 token 黑洞 |
+| `L007` | 模板占位符残留 | 未填写时 Agent 只能猜 |
+
+**关于 `--scope` 的重要性**：历史计划/评审/运行日志里天然充满绝对路径与历史数字，
+它们**描述过去**，改了没有意义。实测扫全量时 L002 产生 554 条噪音，
+真正的问题（`AGENTS.md` 里硬编码盘符）被淹没。**噪音淹没真报警，门禁就会被关掉。**
+
+---
+
+## 6. 钩子扩展
 
 复杂钩子（如 SylvaPPT 的 5px 坐标规则检查）用声明式配置管理 → `.harness/hooks/hooks.json`。
 模板默认只启用提交闸门；项目需要时按同样结构追加。
