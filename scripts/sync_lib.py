@@ -37,18 +37,18 @@ import os
 # 同步时永远不碰的文件（相对项目根）。
 # 这些是"项目自己的内容"，模板只提供空壳，用户填的东西是资产。
 NEVER_SYNC = {
-    ".harness/config.json",          # 项目自身的开关，同步它等于覆盖用户的模块选择
-    ".harness/state/progress.md",    # 项目变更日志 —— 用户资产
+    ".harness/config.json",  # 项目自身的开关，同步它等于覆盖用户的模块选择
+    ".harness/state/progress.md",  # 项目变更日志 —— 用户资产
     ".harness/state/session-handoff.md",
     ".harness/state/feature_list.json",
-    ".harness/memory/lessons.md",    # 项目踩的坑 —— 用户资产
-    ".harness/TEMPLATE-REPO",        # 模板仓库标记，绝不能泄漏
+    ".harness/memory/lessons.md",  # 项目踩的坑 —— 用户资产
+    ".harness/TEMPLATE-REPO",  # 模板仓库标记，绝不能泄漏
 }
 
 # 目录：整棵跳过（内容与项目强相关）
 NEVER_SYNC_DIRS = (
     ".harness/state/archive",
-    ".harness/planning/decisions",   # 项目的 ADR 是项目自己的决策
+    ".harness/planning/decisions",  # 项目的 ADR 是项目自己的决策
 )
 
 SYNC_FIELD = "template_sync"
@@ -96,8 +96,9 @@ def sha256_bytes(data: bytes) -> str:
 NO_SUBSTITUTE_BASENAMES = {"new_project.py"}
 
 
-def apply_substitutions(data: bytes, mapping: dict[str, str],
-                        rel: str | None = None) -> bytes:
+def apply_substitutions(
+    data: bytes, mapping: dict[str, str], rel: str | None = None
+) -> bytes:
     """把 {{KEY}} 替换成 mapping 里的值。
 
     为什么必须有它：模板里是 `{{PROJECT_NAME}}`，项目里是实值。
@@ -122,8 +123,9 @@ def apply_substitutions(data: bytes, mapping: dict[str, str],
     return text.encode("utf-8")
 
 
-def snapshot(root: str, rels: list[str],
-             substitutions: dict[str, str] | None = None) -> tuple[dict[str, str], list[str]]:
+def snapshot(
+    root: str, rels: list[str], substitutions: dict[str, str] | None = None
+) -> tuple[dict[str, str], list[str]]:
     """对给定相对路径列表做快照。
 
     substitutions: 若提供，先对内容施加替换再算哈希。
@@ -151,8 +153,9 @@ def snapshot(root: str, rels: list[str],
     return out, failed
 
 
-def classify(base: dict[str, str], ours: dict[str, str],
-             theirs: dict[str, str]) -> dict[str, list[str]]:
+def classify(
+    base: dict[str, str], ours: dict[str, str], theirs: dict[str, str]
+) -> dict[str, list[str]]:
     """三向比较，输出五类结果。
 
     base   : 生成时记录的基线（可能为空 —— 旧项目没有）
@@ -169,8 +172,11 @@ def classify(base: dict[str, str], ours: dict[str, str],
     **base 为空时（旧项目）**：无法区分"谁改的"，一律归入 conflict（不覆盖）。
     """
     res = {
-        "added": [], "updatable": [], "local_only": [],
-        "conflict": [], "unchanged": [],
+        "added": [],
+        "updatable": [],
+        "local_only": [],
+        "conflict": [],
+        "unchanged": [],
     }
     for rel, th in theirs.items():
         if is_never_sync(rel):
@@ -185,11 +191,11 @@ def classify(base: dict[str, str], ours: dict[str, str],
             # 没有基线 → 不知道差异是谁造成的 → 保守归入冲突
             res["conflict"].append(rel)
         elif ba == ou:
-            res["updatable"].append(rel)   # 项目没动过，模板改了
+            res["updatable"].append(rel)  # 项目没动过，模板改了
         elif ba == th:
-            res["unchanged"].append(rel)   # 模板没改，是项目自己改的 → 保护
+            res["unchanged"].append(rel)  # 模板没改，是项目自己改的 → 保护
         else:
-            res["conflict"].append(rel)    # 两边都改了
+            res["conflict"].append(rel)  # 两边都改了
 
     for rel in ours:
         if rel not in theirs and not is_never_sync(rel):

@@ -57,20 +57,44 @@ def _norm(path: str) -> str:
         p = p[2:]
     return p
 
+
 # --------------------------------------------------------------------------
 # 默认忽略的目录 / 文件
 # --------------------------------------------------------------------------
 DEFAULT_IGNORE_DIRS = {
-    ".git", ".svn", ".hg",
-    "node_modules", "bower_components",
-    "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache",
-    ".venv", "venv", "env", ".env",
-    "dist", "build", "out", "target", "bin", "obj",
-    "coverage", "htmlcov", ".next", ".nuxt", ".svelte-kit",
-    ".idea", ".vscode", ".workbuddy",
-    "site-packages", "vendor", "third_party",
+    ".git",
+    ".svn",
+    ".hg",
+    "node_modules",
+    "bower_components",
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".venv",
+    "venv",
+    "env",
+    ".env",
+    "dist",
+    "build",
+    "out",
+    "target",
+    "bin",
+    "obj",
+    "coverage",
+    "htmlcov",
+    ".next",
+    ".nuxt",
+    ".svelte-kit",
+    ".idea",
+    ".vscode",
+    ".workbuddy",
+    "site-packages",
+    "vendor",
+    "third_party",
     # 本仓库自带的正反例目录，扫真实项目时不应把它算进来
-    "_selftest", "examples_placeholder",
+    "_selftest",
+    "examples_placeholder",
 }
 
 # 本脚本自身含有大量占位关键词（规则定义），必须自我排除，
@@ -78,15 +102,50 @@ DEFAULT_IGNORE_DIRS = {
 SELF_NAME = os.path.basename(__file__)
 
 TEXT_EXTENSIONS = {
-    ".py", ".pyi", ".js", ".jsx", ".mjs", ".cjs",
-    ".ts", ".tsx", ".vue", ".svelte",
-    ".java", ".kt", ".kts", ".scala", ".go", ".rs",
-    ".rb", ".php", ".cs", ".c", ".cc", ".cpp", ".h", ".hpp",
-    ".sh", ".bash", ".ps1",
-    ".sql", ".graphql", ".gql", ".proto",
-    ".json", ".yaml", ".yml", ".toml", ".ini", ".cfg",
-    ".md", ".mdx", ".txt",
-    ".html", ".css", ".scss", ".less",
+    ".py",
+    ".pyi",
+    ".js",
+    ".jsx",
+    ".mjs",
+    ".cjs",
+    ".ts",
+    ".tsx",
+    ".vue",
+    ".svelte",
+    ".java",
+    ".kt",
+    ".kts",
+    ".scala",
+    ".go",
+    ".rs",
+    ".rb",
+    ".php",
+    ".cs",
+    ".c",
+    ".cc",
+    ".cpp",
+    ".h",
+    ".hpp",
+    ".sh",
+    ".bash",
+    ".ps1",
+    ".sql",
+    ".graphql",
+    ".gql",
+    ".proto",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".ini",
+    ".cfg",
+    ".md",
+    ".mdx",
+    ".txt",
+    ".html",
+    ".css",
+    ".scss",
+    ".less",
 }
 
 
@@ -96,13 +155,15 @@ TEXT_EXTENSIONS = {
 @dataclass(frozen=True)
 class Rule:
     rid: str
-    severity: str          # "error" | "warn"
+    severity: str  # "error" | "warn"
     pattern: re.Pattern
-    hint: str              # 人话解释：这通常意味着什么
+    hint: str  # 人话解释：这通常意味着什么
 
 
 def _r(rid: str, severity: str, regex: str, hint: str) -> Rule:
-    return Rule(rid=rid, severity=severity, pattern=re.compile(regex, re.IGNORECASE), hint=hint)
+    return Rule(
+        rid=rid, severity=severity, pattern=re.compile(regex, re.IGNORECASE), hint=hint
+    )
 
 
 # 说明：为避免本脚本扫描自身时命中规则，关键词在下面用字符串拼接构造。
@@ -113,7 +174,8 @@ _K_HACK = "HA" + "CK"
 RULES: list[Rule] = [
     # ---------------- ERROR: 明确的未完成标记 ----------------
     _r(
-        "todo-marker", "error",
+        "todo-marker",
+        "error",
         rf"\b({_K_TODO}|{_K_FIXME}|{_K_HACK}|TBD)\b\s*[:：]?",
         "显式的未完成标记；交付前必须实现或转成正式 issue",
     ),
@@ -121,61 +183,74 @@ RULES: list[Rule] = [
         # 必须要求标记词前面有注释符号：否则「本文档说明占位符的危害」这类
         # 描述性文字（docstring、字符串、 prose）会被当成占位标记，产生噪音误报。
         # 门禁误报太多会被关掉，那就等于没有门禁——所以宁可漏，不可吵。
-        "todo-marker-zh", "error",
+        # 词表口径（实测校准）：只收**状态判断词**，不收**名词**。
+        #   "占位符/占位的" 已移除 —— 它们是名词，注释里讨论"占位符从未被替换"
+        #   这种**描述性文字**会被当成标记，产生 9 条误报（S13：工具被自己的规则打中）。
+        #   真标记由 `todo-marker`（TODO/FIXME）与下面的"占位实现"兜住，不会漏。
+        "todo-marker-zh",
+        "error",
         r"(?:^|\s)(?:#|//|/\*|\*|<!--)[^\n]*?"
-        r"(待实现|未实现|暂未实现|暂不实现|待补充|待完善|占位符|占位的|占位实现)",
+        r"(待实现|未实现|暂未实现|暂不实现|待补充|待完善|占位实现|桩实现)",
         "中文未完成标记（要求出现在注释中，避免误伤说明性文字）",
     ),
     _r(
-        "not-implemented", "error",
+        "not-implemented",
+        "error",
         r"\b(NotImplementedError|NotImplementedException|NotImplemented)\b",
         "抛出未实现异常，属于桩实现",
     ),
     _r(
-        "stub-return", "error",
+        "stub-return",
+        "error",
         r"return\s+(['\"])[^'\"]{0,40}?(mock|fake|dummy|placeholder|stub|示例|假数据|测试数据)[^'\"]{0,40}?\1",
         "返回硬编码的假数据字符串",
     ),
     _r(
-        "stub-variable", "error",
+        "stub-variable",
+        "error",
         r"\b(mock_data|fake_data|dummy_data|假数据|示例数据|写死的?数据)\b",
         "假数据变量/常量：说明真实数据源没接上",
     ),
     _r(
         # 返回字面量对象里带 mock/fake 值，如 return {"name": "mock_user"}。
         # 定为 WARN 而非 ERROR：有些领域里 dummy/placeholder 是合法概念名。
-        "stub-return-dict", "warn",
+        "stub-return-dict",
+        "warn",
         r"return\s*[\{\[][^\n]{0,200}?\b(mock|fake|dummy|placeholder)\w*\b",
         "返回的对象字面量中带 mock/fake/dummy 值：疑似硬编码假数据",
     ),
-
     # ---------------- WARN: 可疑但可能合法 ----------------
     _r(
-        "empty-body", "warn",
+        "empty-body",
+        "warn",
         r"^\s*(pass|\.\.\.)\s*(#.*)?$",
         "空函数体（Python 的 pass / ...）：抽象方法与协议定义合法，业务逻辑里出现即为桩",
     ),
     _r(
-        "shallow-catch", "warn",
+        "shallow-catch",
+        "warn",
         r"(except[^\n:]*:\s*(?:#[^\n]*)?\n\s*pass\b|"
         r"catch\s*\([^)]*\)\s*\{\s*\}|"
         r"catch\s*\([^)]*\)\s*\{\s*(//|/\*)[^\n]*\})",
         "吞掉异常的浅层错误处理：catch 后什么都不做，等于隐藏故障",
     ),
     _r(
-        "log-and-rethrow", "warn",
+        "log-and-rethrow",
+        "warn",
         r"(except[^\n:]*:\s*(?:#[^\n]*)?\n(?:\s+[^\n]*\n){0,3}?\s*raise(?!\s+\w*Error\s*\()|"
         r"catch\s*\([^)]*\)\s*\{\s*(?:console\.(log|error|warn)|logger\.\w+)\([^\n]*\)\s*;\s*(throw|})[^}]*\})",
         "日志后原样重抛：没有恢复动作、没有上下文，属于通用占位式错误处理",
     ),
     _r(
-        "demo-wording", "warn",
+        "demo-wording",
+        "warn",
         r"(coming\s+soon|not\s+implemented\s+yet|demo\s+only|for\s+now,?\s+(we|I|let)|"
         r"敬请期待|演示用|临时(返回|写死|方案)|暂时(返回|写死|用)|先写死)",
         "演示/临时话术：说明这块是过渡实现，不是最终交付",
     ),
     _r(
-        "hardcoded-fallback", "warn",
+        "hardcoded-fallback",
+        "warn",
         r"return\s+(null|None|undefined|\[\]|\{\}|0|1|\"\"|'')\s*(//|#)\s*\S",
         "带注释的兜底返回：常是「真实逻辑没做，先返回个默认值」",
     ),
@@ -194,9 +269,15 @@ MULTILINE_RULE_IDS = {"shallow-catch", "log-and-rethrow"}
 # 一个防占位符的系统被自己的门禁判违规 14 次 —— 说明扫描范围设计错了，不是文档写错了。
 # 文档该被检查的只有一件事：**模板占位符填没填**（{{XXX}}）。
 CODE_ONLY_RULES = {
-    "todo-marker", "todo-marker-zh", "not-implemented",
-    "stub-return", "stub-variable", "stub-return-dict",
-    "empty-body", "shallow-catch", "log-and-rethrow",
+    "todo-marker",
+    "todo-marker-zh",
+    "not-implemented",
+    "stub-return",
+    "stub-variable",
+    "stub-return-dict",
+    "empty-body",
+    "shallow-catch",
+    "log-and-rethrow",
     "hardcoded-fallback",
 }
 DOC_EXTENSIONS = {".md", ".mdx", ".txt", ".rst"}
@@ -230,7 +311,9 @@ class Finding:
     text: str
 
 
-def iter_files(paths: Iterable[str], ignore_dirs: set[str], extra_exclude: list[str]) -> Iterator[str]:
+def iter_files(
+    paths: Iterable[str], ignore_dirs: set[str], extra_exclude: list[str]
+) -> Iterator[str]:
     """产出待扫描的文件路径。目录递归，文件直接用。"""
     exclude_patterns = [re.compile(p) for p in extra_exclude]
 
@@ -243,7 +326,9 @@ def iter_files(paths: Iterable[str], ignore_dirs: set[str], extra_exclude: list[
             print(f"[!] 路径不存在，已跳过: {p}", file=sys.stderr)
             continue
         for root, dirs, files in os.walk(p):
-            dirs[:] = [d for d in dirs if d not in ignore_dirs and not d.startswith(".")]
+            dirs[:] = [
+                d for d in dirs if d not in ignore_dirs and not d.startswith(".")
+            ]
             for fn in files:
                 if fn == SELF_NAME:
                     continue
@@ -348,17 +433,19 @@ def scan_file(filepath: str, allow: set[tuple[str, int]]) -> list[Finding]:
         key = (lineno, rule.rid)
         if key in seen:
             return
-        if _inline_allowed(lines, lineno):       # 行内 `guard:allow` 指令
+        if _inline_allowed(lines, lineno):  # 行内 `guard:allow` 指令
             return
         seen.add(key)
-        findings.append(Finding(
-            file=norm_path,
-            line=lineno,
-            severity=rule.severity,
-            rule=rule.rid,
-            hint=rule.hint,
-            text=text.strip()[:200],
-        ))
+        findings.append(
+            Finding(
+                file=norm_path,
+                line=lineno,
+                severity=rule.severity,
+                rule=rule.rid,
+                hint=rule.hint,
+                text=text.strip()[:200],
+            )
+        )
 
     # --- 阶段 1：跨行规则（全文匹配）---
     # 按文件类型取规则：文档只跑模板占位符族（详见 CODE_ONLY_RULES 上方注释）
@@ -373,7 +460,11 @@ def scan_file(filepath: str, allow: set[tuple[str, int]]) -> list[Finding]:
                 continue
             for ln in range(start_line, end_line + 1):
                 covered_by_multiline.add(ln)
-            emit(start_line, rule, lines[start_line - 1] if start_line <= len(lines) else "")
+            emit(
+                start_line,
+                rule,
+                lines[start_line - 1] if start_line <= len(lines) else "",
+            )
 
     # --- 阶段 2：单行规则 ---
     for i, line in enumerate(lines, start=1):
@@ -432,14 +523,19 @@ def main(argv: list[str] | None = None) -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     ap.add_argument("paths", nargs="+", help="要扫描的文件或目录")
-    ap.add_argument("--fail-on", choices=["error", "warn"], default="error",
-                    help="达到该级别即非零退出（默认 error）")
-    ap.add_argument("--allowlist", default=None,
-                    help="白名单文件，每行 `path[:line]`")
-    ap.add_argument("--exclude", action="append", default=[],
-                    help="额外排除路径（正则，可重复）")
-    ap.add_argument("--ignore-dir", action="append", default=[],
-                    help="额外忽略的目录名（可重复）")
+    ap.add_argument(
+        "--fail-on",
+        choices=["error", "warn"],
+        default="error",
+        help="达到该级别即非零退出（默认 error）",
+    )
+    ap.add_argument("--allowlist", default=None, help="白名单文件，每行 `path[:line]`")
+    ap.add_argument(
+        "--exclude", action="append", default=[], help="额外排除路径（正则，可重复）"
+    )
+    ap.add_argument(
+        "--ignore-dir", action="append", default=[], help="额外忽略的目录名（可重复）"
+    )
     ap.add_argument("--json", action="store_true", help="输出 JSON")
     ap.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
     args = ap.parse_args(argv)
@@ -449,8 +545,10 @@ def main(argv: list[str] | None = None) -> int:
 
     files = list(iter_files(args.paths, ignore_dirs, args.exclude))
     if not files:
-        print("[!] 没有扫描到任何文件 —— 这本身就是异常，请检查 paths / exclude 配置。",
-              file=sys.stderr)
+        print(
+            "[!] 没有扫描到任何文件 —— 这本身就是异常，请检查 paths / exclude 配置。",
+            file=sys.stderr,
+        )
         return 2
 
     findings: list[Finding] = []
@@ -459,29 +557,30 @@ def main(argv: list[str] | None = None) -> int:
 
     findings.sort(key=lambda f: (SEV_ORDER[f.severity], f.file, f.line))
 
-    blocking = [f for f in findings
-                if f.severity == "error" or args.fail_on == "warn"]
+    blocking = [f for f in findings if f.severity == "error" or args.fail_on == "warn"]
     exit_code = 1 if blocking else 0
 
     if args.json:
-        print(json.dumps(
-            {
-                "version": VERSION,
-                "scanned_files": len(files),
-                "counts": {
-                    "error": sum(1 for f in findings if f.severity == "error"),
-                    "warn": sum(1 for f in findings if f.severity == "warn"),
+        print(
+            json.dumps(
+                {
+                    "version": VERSION,
+                    "scanned_files": len(files),
+                    "counts": {
+                        "error": sum(1 for f in findings if f.severity == "error"),
+                        "warn": sum(1 for f in findings if f.severity == "warn"),
+                    },
+                    "blocking": len(blocking),
+                    "exit_code": exit_code,
+                    "findings": [asdict(f) for f in findings],
                 },
-                "blocking": len(blocking),
-                "exit_code": exit_code,
-                "findings": [asdict(f) for f in findings],
-            },
-            ensure_ascii=False, indent=2,
-        ))
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
     else:
         print_report(findings, len(files))
-        print(f"\n退出码: {exit_code}"
-              + ("（阻断交付）" if exit_code else "（放行）"))
+        print(f"\n退出码: {exit_code}" + ("（阻断交付）" if exit_code else "（放行）"))
 
     return exit_code
 

@@ -61,7 +61,11 @@ DEFAULT_LIMITS = {
     "AGENTS.md": {"max_bytes": 16 * 1024, "max_lines": 150},
     "progress.md": {"max_bytes": 32 * 1024, "max_lines": 300, "keep_log_lines": 120},
     "session-handoff.md": {"max_bytes": 16 * 1024, "max_lines": 200},
-    "feature_list.json": {"max_bytes": 64 * 1024, "max_items": 150, "keep_completed": 60},
+    "feature_list.json": {
+        "max_bytes": 64 * 1024,
+        "max_items": 150,
+        "keep_completed": 60,
+    },
 }
 
 STATE_DIR = ".harness/state"
@@ -78,7 +82,7 @@ ROGUE_STATE_PATTERNS = [
 
 @dataclass
 class Finding:
-    level: str        # "error" | "warn" | "info"
+    level: str  # "error" | "warn" | "info"
     target: str
     message: str
     hint: str = ""
@@ -130,23 +134,32 @@ def check_files(root: str, limits: dict) -> tuple[list[Finding], dict]:
         mb = lim.get("max_bytes")
         ml = lim.get("max_lines")
         if mb and size > mb:
-            findings.append(Finding(
-                "error", name,
-                f"体积 {size:,} bytes 超过上限 {mb:,}（{size / mb:.1f}x）",
-                "执行 --archive 归档，或人工精简。状态文件是给 Agent 读的，不是档案",
-            ))
+            findings.append(
+                Finding(
+                    "error",
+                    name,
+                    f"体积 {size:,} bytes 超过上限 {mb:,}（{size / mb:.1f}x）",
+                    "执行 --archive 归档，或人工精简。状态文件是给 Agent 读的，不是档案",
+                )
+            )
         elif mb and size > mb * 0.8:
-            findings.append(Finding(
-                "warn", name,
-                f"体积 {size:,} bytes 已达上限 {mb:,} 的 {size / mb:.0%}",
-                "提前规划归档",
-            ))
+            findings.append(
+                Finding(
+                    "warn",
+                    name,
+                    f"体积 {size:,} bytes 已达上限 {mb:,} 的 {size / mb:.0%}",
+                    "提前规划归档",
+                )
+            )
         if ml and lines > ml:
-            findings.append(Finding(
-                "error", name,
-                f"行数 {lines} 超过上限 {ml}",
-                "外推内容到 skills/memory，或归档历史",
-            ))
+            findings.append(
+                Finding(
+                    "error",
+                    name,
+                    f"行数 {lines} 超过上限 {ml}",
+                    "外推内容到 skills/memory，或归档历史",
+                )
+            )
 
     # feature_list.json 条目数 + completed 比例
     fl_path = os.path.join(root, STATE_DIR, "feature_list.json")
@@ -157,24 +170,36 @@ def check_files(root: str, limits: dict) -> tuple[list[Finding], dict]:
             feats = data.get("features", []) if isinstance(data, dict) else []
             lim = limits.get("feature_list.json", {})
             mi = lim.get("max_items")
-            done = [x for x in feats if isinstance(x, dict) and x.get("status") == "completed"]
-            metrics["feature_list.json"].update({
-                "items": len(feats),
-                "completed": len(done),
-                "completed_ratio": round(len(done) / len(feats), 3) if feats else 0,
-            })
+            done = [
+                x
+                for x in feats
+                if isinstance(x, dict) and x.get("status") == "completed"
+            ]
+            metrics["feature_list.json"].update(
+                {
+                    "items": len(feats),
+                    "completed": len(done),
+                    "completed_ratio": round(len(done) / len(feats), 3) if feats else 0,
+                }
+            )
             if mi and len(feats) > mi:
-                findings.append(Finding(
-                    "error", "feature_list.json",
-                    f"条目数 {len(feats)} 超过上限 {mi}",
-                    "执行 --archive 把已完成的旧条目移入归档区",
-                ))
+                findings.append(
+                    Finding(
+                        "error",
+                        "feature_list.json",
+                        f"条目数 {len(feats)} 超过上限 {mi}",
+                        "执行 --archive 把已完成的旧条目移入归档区",
+                    )
+                )
         except json.JSONDecodeError as e:
-            findings.append(Finding(
-                "error", "feature_list.json",
-                f"JSON 解析失败（并发写常见）: {e}",
-                "用工具重写为合法 JSON；不要手拼",
-            ))
+            findings.append(
+                Finding(
+                    "error",
+                    "feature_list.json",
+                    f"JSON 解析失败（并发写常见）: {e}",
+                    "用工具重写为合法 JSON；不要手拼",
+                )
+            )
 
     return findings, metrics
 
@@ -194,12 +219,15 @@ def check_rogue_state(root: str) -> list[Finding]:
         if any(rx.match(e) for rx in ROGUE_STATE_PATTERNS):
             size = os.path.getsize(p)
             level = "error" if size == 0 else "warn"
-            findings.append(Finding(
-                level, e,
-                f"疑似第二套状态文件（{size:,} bytes）"
-                + ("，且为空文件" if size == 0 else ""),
-                "状态层只允许 state/ 三件。历史流水请归档，空文件请删除",
-            ))
+            findings.append(
+                Finding(
+                    level,
+                    e,
+                    f"疑似第二套状态文件（{size:,} bytes）"
+                    + ("，且为空文件" if size == 0 else ""),
+                    "状态层只允许 state/ 三件。历史流水请归档，空文件请删除",
+                )
+            )
     return findings
 
 
@@ -260,7 +288,9 @@ def archive_progress_log(root: str, keep: int, dry: bool) -> tuple[str | None, i
     return os.path.relpath(arc_path, root).replace("\\", "/"), len(move)
 
 
-def archive_feature_list(root: str, keep_completed: int, dry: bool) -> tuple[str | None, int]:
+def archive_feature_list(
+    root: str, keep_completed: int, dry: bool
+) -> tuple[str | None, int]:
     """把 feature_list.json 中最早的 completed 条目移入归档文件。"""
     path = os.path.join(root, STATE_DIR, "feature_list.json")
     if not os.path.isfile(path):
@@ -274,8 +304,11 @@ def archive_feature_list(root: str, keep_completed: int, dry: bool) -> tuple[str
         return None, 0
 
     feats = data.get("features", [])
-    completed_idx = [i for i, x in enumerate(feats)
-                     if isinstance(x, dict) and x.get("status") == "completed"]
+    completed_idx = [
+        i
+        for i, x in enumerate(feats)
+        if isinstance(x, dict) and x.get("status") == "completed"
+    ]
     if len(completed_idx) <= keep_completed:
         return None, 0
 
@@ -307,10 +340,14 @@ def archive_feature_list(root: str, keep_completed: int, dry: bool) -> tuple[str
         s = data.get("summary", {})
         if isinstance(s, dict):
             s["total"] = len(remain)
-            s["completed"] = sum(1 for x in remain
-                                 if isinstance(x, dict) and x.get("status") == "completed")
-            s["completion_rate"] = (f"{round(s['completed'] / len(remain) * 100)}%"
-                                    if remain else "0%")
+            s["completed"] = sum(
+                1
+                for x in remain
+                if isinstance(x, dict) and x.get("status") == "completed"
+            )
+            s["completion_rate"] = (
+                f"{round(s['completed'] / len(remain) * 100)}%" if remain else "0%"
+            )
             data["summary"] = s
         data["last_updated"] = datetime.now().date().isoformat()
         with open(path, "w", encoding="utf-8") as f:
@@ -323,13 +360,18 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="状态层健康检查与归档")
     ap.add_argument("--root", default=None, help="仓库根（默认从脚本位置推断）")
     ap.add_argument("--archive", action="store_true", help="执行归档")
-    ap.add_argument("--dry-run", action="store_true", help="配合 --archive：只显示不写入")
+    ap.add_argument(
+        "--dry-run", action="store_true", help="配合 --archive：只显示不写入"
+    )
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
     args = ap.parse_args(argv)
 
-    root = os.path.abspath(args.root) if args.root else \
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    root = (
+        os.path.abspath(args.root)
+        if args.root
+        else os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    )
     if not os.path.isdir(root):
         print(f"[!] 仓库根不存在: {root}", file=sys.stderr)
         return 2
@@ -348,12 +390,16 @@ def main(argv: list[str] | None = None) -> int:
         p = limits.get("progress.md", {})
         path, n = archive_progress_log(root, p.get("keep_log_lines", 120), dry)
         if n:
-            archived.append({"file": path, "moved": n, "kind": "progress-log", "dry_run": dry})
+            archived.append(
+                {"file": path, "moved": n, "kind": "progress-log", "dry_run": dry}
+            )
         path2, n2 = archive_feature_list(
-            root, limits.get("feature_list.json", {}).get("keep_completed", 60), dry)
+            root, limits.get("feature_list.json", {}).get("keep_completed", 60), dry
+        )
         if n2:
-            archived.append({"file": path2, "moved": n2,
-                             "kind": "feature_list", "dry_run": dry})
+            archived.append(
+                {"file": path2, "moved": n2, "kind": "feature_list", "dry_run": dry}
+            )
         if not archived:
             print("无需归档：所有内容都在保留配额内。")
 
@@ -361,13 +407,21 @@ def main(argv: list[str] | None = None) -> int:
     exit_code = 1 if errors else 0
 
     if args.json:
-        print(json.dumps({
-            "version": VERSION, "root": root.replace("\\", "/"),
-            "metrics": metrics,
-            "findings": [asdict(f) for f in findings],
-            "archived": archived,
-            "errors": len(errors), "exit_code": exit_code,
-        }, ensure_ascii=False, indent=2))
+        print(
+            json.dumps(
+                {
+                    "version": VERSION,
+                    "root": root.replace("\\", "/"),
+                    "metrics": metrics,
+                    "findings": [asdict(f) for f in findings],
+                    "archived": archived,
+                    "errors": len(errors),
+                    "exit_code": exit_code,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
         return exit_code
 
     print(f"\n状态层健康检查 — {root}\n" + "=" * 62)

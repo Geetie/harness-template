@@ -73,7 +73,15 @@ from harness_version import TEMPLATE_VERSION as VERSION  # noqa: E402
 SKIPPED: list[str] = []
 
 SCAN_TARGETS = ["AGENTS.md", "CLAUDE.md", ".harness", "docs"]
-EXCLUDE_DIRS = {"archive", "node_modules", ".git", "__pycache__", "dist", "build", ".venv"}
+EXCLUDE_DIRS = {
+    "archive",
+    "node_modules",
+    ".git",
+    "__pycache__",
+    "dist",
+    "build",
+    ".venv",
+}
 
 # ── 作用域：治理文档 vs 历史档案 ──
 # 为什么必须区分：历史计划/评审/运行日志里天然充满绝对路径与历史数字，
@@ -90,13 +98,30 @@ GOVERNANCE_EXCLUDE_FILES = [
     re.compile(r"^_.*\.md$", re.I),
 ]
 HISTORY_DOC_DIRS = {
-    "docs/specs", "docs/designs", "docs/plans", "docs/superpowers",
-    "docs/devops", "docs/data-sources", "docs/_archive_legacy",
+    "docs/specs",
+    "docs/designs",
+    "docs/plans",
+    "docs/superpowers",
+    "docs/devops",
+    "docs/data-sources",
+    "docs/_archive_legacy",
 }
 
 # 建索引时跳过的目录（这些不是"可引用物"，扫它们只会拖慢并制造噪音）
-SKIP_DIRS = {"node_modules", ".git", "__pycache__", "dist", "build", ".venv",
-             "venv", "target", ".next", ".nuxt", "archive", "coverage"}
+SKIP_DIRS = {
+    "node_modules",
+    ".git",
+    "__pycache__",
+    "dist",
+    "build",
+    ".venv",
+    "venv",
+    "target",
+    ".next",
+    ".nuxt",
+    "archive",
+    "coverage",
+}
 
 # ── L002 绝对路径 ──
 ABS_WIN = re.compile(r"\b[a-zA-Z]:[\\/][^\s`)\]\"']*")
@@ -106,7 +131,7 @@ ABS_POSIX_HOME = re.compile(r"(?<![\w.])/(?:Users|home|mnt|opt)/[^\s`)\]\"']*")
 BASE_PATTERNS = [
     re.compile(r"(\d{3,6})\s*个?\s*(?:测试|用例|tests?)\b", re.I),
     re.compile(r"(\d{3,6})\s*(?:通过|passed)\b", re.I),
-    re.compile(r"(\d{3,6})\s*/\s*\d+\s*/\s*\d+"),          # passed/failed/skipped
+    re.compile(r"(\d{3,6})\s*/\s*\d+\s*/\s*\d+"),  # passed/failed/skipped
     re.compile(r"(?:total|全量|基线)\D{0,12}(\d{3,6})", re.I),
 ]
 
@@ -114,8 +139,12 @@ BASE_PATTERNS = [
 FENCE = re.compile(r"^(`{3,}|~{3,})")
 
 # ── L001 文档内引用的文件路径 ──
-BACKTICK_PATH = re.compile(r"`([A-Za-z0-9_./\\-]+\.(?:md|py|sh|ps1|json|yaml|yml|toml|ts|tsx|js|jsx))`")
-MD_LINK = re.compile(r"\]\(([^)#\s]+\.(?:md|py|sh|ps1|json|yaml|yml|toml|ts|tsx|js|jsx))\)")
+BACKTICK_PATH = re.compile(
+    r"`([A-Za-z0-9_./\\-]+\.(?:md|py|sh|ps1|json|yaml|yml|toml|ts|tsx|js|jsx))`"
+)
+MD_LINK = re.compile(
+    r"\]\(([^)#\s]+\.(?:md|py|sh|ps1|json|yaml|yml|toml|ts|tsx|js|jsx))\)"
+)
 
 # ── L005 最后更新 ──
 UPDATED = re.compile(r"最后更新\D{0,6}(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})")
@@ -136,8 +165,20 @@ LINT_IGNORE = "lint-ignore"
 def is_ignored(line: str) -> bool:
     return LINT_IGNORE in line
 
-ALL_CHECKS = ["L001", "L002", "L003", "L004", "L005", "L006", "L007",
-              "L008", "L009", "L010", "L011"]
+
+ALL_CHECKS = [
+    "L001",
+    "L002",
+    "L003",
+    "L004",
+    "L005",
+    "L006",
+    "L007",
+    "L008",
+    "L009",
+    "L010",
+    "L011",
+]
 
 
 @dataclass
@@ -187,16 +228,21 @@ def collect_docs(root: str, scope: str = "governance") -> list[str]:
                 excl = set(EXCLUDE_DIRS)
                 if scope == "governance":
                     excl |= GOVERNANCE_EXCLUDE_DIRS
-                dn[:] = [d for d in dn
-                         if d not in excl and (not d.startswith(".") or d == ".harness")]
+                dn[:] = [
+                    d
+                    for d in dn
+                    if d not in excl and (not d.startswith(".") or d == ".harness")
+                ]
                 for f in fn:
                     if not f.lower().endswith((".md", ".markdown")):
                         continue
                     if scope == "governance":
                         if any(rx.search(f) for rx in GOVERNANCE_EXCLUDE_FILES):
                             continue
-                        if any(rel_dir == h or rel_dir.startswith(h + "/")
-                               for h in HISTORY_DOC_DIRS):
+                        if any(
+                            rel_dir == h or rel_dir.startswith(h + "/")
+                            for h in HISTORY_DOC_DIRS
+                        ):
                             continue
                     out.append(os.path.join(dp, f))
     return sorted(set(out))
@@ -214,11 +260,11 @@ IGNORE_REFS = {
     # ↓ 以下是"教训正文里提到的历史文件名"：GLOBAL-LESSONS / harness-antipatterns
     #   在描述别项目的坑时原样引用了当时的文件名。它们**不该**在本仓库存在，
     #   但确实是真实引用（不是笔误），报出来只会让人以为文档写错了。
-    "harness-tasks.json",       # SylvaPPT 时代与 state/ 并存的第二套状态（反面教材）
-    "harness-progress.txt",     # 同上，Antipattern 章节列举的噪音文件
-    "init.sh",                  # V9 讲基线漂移时泛指"记录基线的那些文件"
-    "package.json",             # 泛指；模板是 stack 无关的，不带包管理文件
-    "docs/CURRENT/02-technical-specs/cv-first-architecture.md",   # SylvaPPT 真实设计文档
+    "harness-tasks.json",  # SylvaPPT 时代与 state/ 并存的第二套状态（反面教材）
+    "harness-progress.txt",  # 同上，Antipattern 章节列举的噪音文件
+    "init.sh",  # V9 讲基线漂移时泛指"记录基线的那些文件"
+    "package.json",  # 泛指；模板是 stack 无关的，不带包管理文件
+    "docs/CURRENT/02-technical-specs/cv-first-architecture.md",  # SylvaPPT 真实设计文档
 }
 
 
@@ -285,8 +331,7 @@ def iter_lines_skip_fence(content: str):
         yield i, ln
 
 
-def disabled_module_basenames(disabled: set[str],
-                              root: str | None = None) -> set[str]:
+def disabled_module_basenames(disabled: set[str], root: str | None = None) -> set[str]:
     """把已关闭模块的路径集合转成 basename 集合，供"裸文件名引用"比对。
 
     为什么必须双面比对：文档里引用同一个产物有两种写法 ——
@@ -324,11 +369,23 @@ def is_real_path_ref(ref: str) -> bool:
         return False
     # 示例占位名：`xxx` / `yyy` / `zzz` / `foo` / `bar` / `baz` 等
     stem = ref.replace("\\", "/").rsplit("/", 1)[-1].split(".", 1)[0].lower()
-    if stem in {"xxx", "yyy", "zzz", "foo", "bar", "baz", "qux",
-                "yourfile", "your_file", "filename", "somefile", "example"}:
+    if stem in {
+        "xxx",
+        "yyy",
+        "zzz",
+        "foo",
+        "bar",
+        "baz",
+        "qux",
+        "yourfile",
+        "your_file",
+        "filename",
+        "somefile",
+        "example",
+    }:
         return False
     if stem and len(set(stem)) == 1 and stem[0].isalpha():
-        return False        # `xxx` / `aaa` / `x` 这类重复单字符
+        return False  # `xxx` / `aaa` / `x` 这类重复单字符
     return True
 
 
@@ -341,7 +398,11 @@ def build_name_index(root: str) -> set[str]:
     """
     idx: set[str] = set()
     for dp, dn, fn in os.walk(root):
-        dn[:] = [d for d in dn if d not in SKIP_DIRS and not d.startswith(".") or d == ".harness"]
+        dn[:] = [
+            d
+            for d in dn
+            if d not in SKIP_DIRS and not d.startswith(".") or d == ".harness"
+        ]
         for f in fn:
             rel_p = os.path.relpath(os.path.join(dp, f), root).replace("\\", "/")
             for v in (f, rel_p):
@@ -352,8 +413,9 @@ def build_name_index(root: str) -> set[str]:
     return idx
 
 
-def check_l001(root: str, docs: list[str], name_index: set[str],
-               disabled: set[str] | None = None) -> list[Finding]:
+def check_l001(
+    root: str, docs: list[str], name_index: set[str], disabled: set[str] | None = None
+) -> list[Finding]:
     """死链接：引用的本项目文件在仓库内找不到同名/同路径文件。
 
     disabled：已关闭模块的路径集合 —— 跳过它们（模块没启用，文件本就不该存在）。
@@ -380,9 +442,15 @@ def check_l001(root: str, docs: list[str], name_index: set[str],
                     norm = norm_rel(ref)
                     # 属于已关闭模块 → 不是死链（模块未启用，跳过错开）
                     # 面①：全路径前缀/相等；面②：裸 basename 命中该模块的产物名
-                    if (any(norm.startswith(dp) or ("/" + dp) in ("/" + norm)
-                            or norm == dp.rstrip("/") for dp in disabled)
-                            or norm.rsplit("/", 1)[-1] in disabled_names):
+                    if (
+                        any(
+                            norm.startswith(dp)
+                            or ("/" + dp) in ("/" + norm)
+                            or norm == dp.rstrip("/")
+                            for dp in disabled
+                        )
+                        or norm.rsplit("/", 1)[-1] in disabled_names
+                    ):
                         continue
                     if ref in IGNORE_REFS or norm in IGNORE_REFS:
                         continue
@@ -392,14 +460,23 @@ def check_l001(root: str, docs: list[str], name_index: set[str],
                     if os.path.exists(os.path.join(os.path.dirname(d), ref)):
                         continue
                     base = os.path.basename(norm)
-                    if (base in name_index or base.lower() in name_index
-                            or norm in name_index or norm.lower() in name_index):
+                    if (
+                        base in name_index
+                        or base.lower() in name_index
+                        or norm in name_index
+                        or norm.lower() in name_index
+                    ):
                         continue
-                    out.append(Finding(
-                        "L001", "warn", rel(root, d), i,
-                        f"引用的文件在仓库内找不到: {ref}",
-                        "文件已改名/迁移但引用未更新（重构漏改的典型）；若只是文档里的示例名，可忽略",
-                    ))
+                    out.append(
+                        Finding(
+                            "L001",
+                            "warn",
+                            rel(root, d),
+                            i,
+                            f"引用的文件在仓库内找不到: {ref}",
+                            "文件已改名/迁移但引用未更新（重构漏改的典型）；若只是文档里的示例名，可忽略",
+                        )
+                    )
     return out
 
 
@@ -427,11 +504,16 @@ def check_l002(root: str, docs: list[str], name_index: set[str]) -> list[Finding
                 # 仅在"这条绝对路径指向仓库里的某个文件"时才报
                 if not base or base not in name_index:
                     continue
-                out.append(Finding(
-                    "L002", "error", rel(root, d), i,
-                    f"硬编码绝对路径: {raw[:70]}",
-                    "改用仓库相对路径（clone 到别处/换机器都会失效）",
-                ))
+                out.append(
+                    Finding(
+                        "L002",
+                        "error",
+                        rel(root, d),
+                        i,
+                        f"硬编码绝对路径: {raw[:70]}",
+                        "改用仓库相对路径（clone 到别处/换机器都会失效）",
+                    )
+                )
                 break
     return out
 
@@ -464,8 +546,9 @@ def check_l003(root: str, docs: list[str]) -> list[Finding]:
         a = int(ka)
         # 同项目的基线批次差异不会太大（15% 以上就说明是不同阶段的不同基线，
         # 那属于正常演进而非漂移）。收紧窗口可避免把 4805 与 3200 聚成一簇。
-        cluster = [kb for kb in keys
-                   if kb not in used and a * 0.8 <= int(kb) <= a * 1.25]
+        cluster = [
+            kb for kb in keys if kb not in used and a * 0.8 <= int(kb) <= a * 1.25
+        ]
         if len(cluster) < 2:
             continue
         used.update(cluster)
@@ -473,16 +556,22 @@ def check_l003(root: str, docs: list[str]) -> list[Finding]:
             f"{cb}（{', '.join(f'{f}:{l}' for f, l in hits[cb][:3])}）"
             for cb in cluster
         )
-        out.append(Finding(
-            "L003", "error", "harness 全局", 0,
-            f"疑似基线漂移：同类数字出现 {len(cluster)} 个不同值 —— {detail}",
-            "基线数字必须多处同步。改动后跑 init.py 校验，或把数字只留一处、其余做指针",
-        ))
+        out.append(
+            Finding(
+                "L003",
+                "error",
+                "harness 全局",
+                0,
+                f"疑似基线漂移：同类数字出现 {len(cluster)} 个不同值 —— {detail}",
+                "基线数字必须多处同步。改动后跑 init.py 校验，或把数字只留一处、其余做指针",
+            )
+        )
     return out
 
 
-def check_l004(root: str, docs: list[str],
-               disabled: set[str] | None = None) -> list[Finding]:
+def check_l004(
+    root: str, docs: list[str], disabled: set[str] | None = None
+) -> list[Finding]:
     """ROUTER 注册表与磁盘失配。
 
     disabled：已关闭模块的路径集合。**必须传**，否则 ROUTER.md（⑤技能层，开启）
@@ -498,22 +587,35 @@ def check_l004(root: str, docs: list[str],
     router = os.path.join(router_dir, "ROUTER.md")
     content = read(router)
     if content:
-        for m in re.finditer(r"`?([\w./-]*(?:capabilities|skills)/[\w./-]+\.md)`?", content):
+        for m in re.finditer(
+            r"`?([\w./-]*(?:capabilities|skills)/[\w./-]+\.md)`?", content
+        ):
             ref = m.group(1).strip()
             # 属于已关闭模块 → 不是失配（模块没启用，文件本就不该存在）
             norm = norm_rel(ref)
-            if (any(norm.startswith(dp) or ("/" + dp) in ("/" + norm)
-                    or norm == dp.rstrip("/") for dp in disabled)
-                    or norm.rsplit("/", 1)[-1] in disabled_names):
+            if (
+                any(
+                    norm.startswith(dp)
+                    or ("/" + dp) in ("/" + norm)
+                    or norm == dp.rstrip("/")
+                    for dp in disabled
+                )
+                or norm.rsplit("/", 1)[-1] in disabled_names
+            ):
                 continue
             # 注册表里的路径是**相对 ROUTER.md 所在目录**的（如 capabilities/x.md、../skills/y/SKILL.md）
             cand = os.path.normpath(os.path.join(router_dir, ref))
             if not os.path.exists(cand):
-                out.append(Finding(
-                    "L004", "error", ".harness/routing/ROUTER.md", 0,
-                    f"注册表引用的技能/能力卡不存在: {ref}",
-                    "注册了但文件没了 → Agent 会找不到它",
-                ))
+                out.append(
+                    Finding(
+                        "L004",
+                        "error",
+                        ".harness/routing/ROUTER.md",
+                        0,
+                        f"注册表引用的技能/能力卡不存在: {ref}",
+                        "注册了但文件没了 → Agent 会找不到它",
+                    )
+                )
 
     # 反向：磁盘上有能力卡但未注册
     cap_dir = os.path.join(root, ".harness", "routing", "capabilities")
@@ -524,11 +626,16 @@ def check_l004(root: str, docs: list[str],
             if norm_rel(f".harness/routing/capabilities/{f}") in disabled:
                 continue
             if content and f not in content:
-                out.append(Finding(
-                    "L004", "warn", f".harness/routing/capabilities/{f}", 0,
-                    "能力卡存在但未在 ROUTER 注册",
-                    "未注册 = Agent 不知道它存在 = 等于没有",
-                ))
+                out.append(
+                    Finding(
+                        "L004",
+                        "warn",
+                        f".harness/routing/capabilities/{f}",
+                        0,
+                        "能力卡存在但未在 ROUTER 注册",
+                        "未注册 = Agent 不知道它存在 = 等于没有",
+                    )
+                )
 
     # 技能层同理
     sk_dir = os.path.join(root, ".harness", "skills")
@@ -539,17 +646,27 @@ def check_l004(root: str, docs: list[str],
                 continue
             if os.path.isfile(sk):
                 if content and name not in content:
-                    out.append(Finding(
-                        "L004", "warn", f".harness/skills/{name}/SKILL.md", 0,
-                        "技能存在但未在 ROUTER 注册",
-                        "未注册的技能不会被触发",
-                    ))
+                    out.append(
+                        Finding(
+                            "L004",
+                            "warn",
+                            f".harness/skills/{name}/SKILL.md",
+                            0,
+                            "技能存在但未在 ROUTER 注册",
+                            "未注册的技能不会被触发",
+                        )
+                    )
             elif os.path.isdir(os.path.join(sk_dir, name)):
-                out.append(Finding(
-                    "L004", "warn", f".harness/skills/{name}", 0,
-                    "技能目录存在但没有 SKILL.md",
-                    "目录存在但无入口文件，等于空壳",
-                ))
+                out.append(
+                    Finding(
+                        "L004",
+                        "warn",
+                        f".harness/skills/{name}",
+                        0,
+                        "技能目录存在但没有 SKILL.md",
+                        "目录存在但无入口文件，等于空壳",
+                    )
+                )
     return out
 
 
@@ -572,11 +689,16 @@ def check_l005(root: str, docs: list[str], stale_days: int) -> list[Finding]:
             continue
         days = (today - dt).days
         if days > stale_days:
-            out.append(Finding(
-                "L005", "warn", rel(root, d), 0,
-                f"『最后更新』距今 {days} 天（{dt.isoformat()}）",
-                "长期未更新的治理文档，很可能已有过期规则（stale rules 比缺失更有害）",
-            ))
+            out.append(
+                Finding(
+                    "L005",
+                    "warn",
+                    rel(root, d),
+                    0,
+                    f"『最后更新』距今 {days} 天（{dt.isoformat()}）",
+                    "长期未更新的治理文档，很可能已有过期规则（stale rules 比缺失更有害）",
+                )
+            )
     return out
 
 
@@ -604,11 +726,16 @@ def check_l006(root: str, docs: list[str], max_items: int) -> list[Finding]:
                     break
                 j += 1
             if n > max_items:
-                out.append(Finding(
-                    "L006", "warn", rel(root, d), i + 1,
-                    f"强制阅读清单有 {n} 项（阈值 {max_items}）",
-                    "一次性全读是 token 黑洞。改为分级加载（L0 常驻 / L1 按需）",
-                ))
+                out.append(
+                    Finding(
+                        "L006",
+                        "warn",
+                        rel(root, d),
+                        i + 1,
+                        f"强制阅读清单有 {n} 项（阈值 {max_items}）",
+                        "一次性全读是 token 黑洞。改为分级加载（L0 常驻 / L1 按需）",
+                    )
+                )
     return out
 
 
@@ -633,12 +760,17 @@ def check_l007(root: str, docs: list[str]) -> list[Finding]:
             for m in PLACEHOLDER.finditer(ln):
                 keys.setdefault(m.group(1), i)
         if keys:
-            out.append(Finding(
-                "L007", "warn", rel(root, d), min(keys.values()),
-                f"残留占位符 {len(keys)} 个: {', '.join(sorted(keys)[:6])}"
-                + (" ..." if len(keys) > 6 else ""),
-                "脚手架初始化后需人工填写；未填写时 Agent 只能猜",
-            ))
+            out.append(
+                Finding(
+                    "L007",
+                    "warn",
+                    rel(root, d),
+                    min(keys.values()),
+                    f"残留占位符 {len(keys)} 个: {', '.join(sorted(keys)[:6])}"
+                    + (" ..." if len(keys) > 6 else ""),
+                    "脚手架初始化后需人工填写；未填写时 Agent 只能猜",
+                )
+            )
     return out
 
 
@@ -652,8 +784,14 @@ DECISION_DIR = os.path.join(".harness", "planning")
 DECISIONS_LEDGER = os.path.join(DECISION_DIR, "DECISIONS.md")
 DECISION_BODY_DIR = os.path.join(DECISION_DIR, "decisions")
 
-VALID_STATUS = {"proposed", "accepted", "partial", "superseded",
-                "rejected", "deprecated"}
+VALID_STATUS = {
+    "proposed",
+    "accepted",
+    "partial",
+    "superseded",
+    "rejected",
+    "deprecated",
+}
 
 FRONTMATTER = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.S)
 FM_LINE = re.compile(r"^([a-z_]+):\s*(.*)$")
@@ -703,7 +841,7 @@ def collect_adr_bodies(root: str) -> dict[str, dict[str, str]]:
             continue
         fm = parse_frontmatter(content)
         adr = fm.get("adr", "")
-        if adr and adr.upper() != "ADR-NNN":          # 跳过模板本身
+        if adr and adr.upper() != "ADR-NNN":  # 跳过模板本身
             out[adr.upper()] = fm
             out[adr.upper()]["_file"] = f
     return out
@@ -747,53 +885,81 @@ def check_l008(root: str, bodies: dict[str, dict[str, str]]) -> list[Finding]:
 
         # ① 已失效但没写被谁取代
         if status == "superseded" and not sup_by:
-            out.append(Finding(
-                "L008", "error", f"{DECISION_BODY_DIR}/{f}", 0,
-                f"{adr} 状态为 superseded 但未填 superseded_by",
-                "失效指针缺失 → Agent 无法知道该改看哪条决策。填 frontmatter 的 superseded_by",
-            ))
+            out.append(
+                Finding(
+                    "L008",
+                    "error",
+                    f"{DECISION_BODY_DIR}/{f}",
+                    0,
+                    f"{adr} 状态为 superseded 但未填 superseded_by",
+                    "失效指针缺失 → Agent 无法知道该改看哪条决策。填 frontmatter 的 superseded_by",
+                )
+            )
 
         # ② superseded_by 指向的 ADR 必须存在
         if sup_by:
             target = sup_by.upper()
             if ADR_ID.match(target) and target not in bodies:
-                out.append(Finding(
-                    "L008", "error", f"{DECISION_BODY_DIR}/{f}", 0,
-                    f"{adr} 的 superseded_by 指向不存在的 {target}",
-                    "指针悬空 → 顺着它读不到任何东西",
-                ))
+                out.append(
+                    Finding(
+                        "L008",
+                        "error",
+                        f"{DECISION_BODY_DIR}/{f}",
+                        0,
+                        f"{adr} 的 superseded_by 指向不存在的 {target}",
+                        "指针悬空 → 顺着它读不到任何东西",
+                    )
+                )
             # ③ 反向指针必须闭合
             elif target in bodies:
                 back = parse_list_field(bodies[target].get("supersedes", ""))
                 if adr not in back:
-                    out.append(Finding(
-                        "L008", "error", f"{DECISION_BODY_DIR}/{bodies[target]['_file']}", 0,
-                        f"{target} 被 {adr} 取代，但 {target} 未声明 supersedes: [{adr}]",
-                        "双向指针缺一侧 → 链路断裂，Agent 可能顺旧指针继续走",
-                    ))
+                    out.append(
+                        Finding(
+                            "L008",
+                            "error",
+                            f"{DECISION_BODY_DIR}/{bodies[target]['_file']}",
+                            0,
+                            f"{target} 被 {adr} 取代，但 {target} 未声明 supersedes: [{adr}]",
+                            "双向指针缺一侧 → 链路断裂，Agent 可能顺旧指针继续走",
+                        )
+                    )
 
         # ④ supersedes 指向的 ADR 必须存在，且反向指针必须闭合
         for old in supersedes:
             if not ADR_ID.match(old):
                 continue
             if old not in bodies:
-                out.append(Finding(
-                    "L008", "error", f"{DECISION_BODY_DIR}/{f}", 0,
-                    f"{adr} 声明取代 {old}，但该 ADR 不存在",
-                    "指向不存在的决策（编号写错或文件丢失）",
-                ))
+                out.append(
+                    Finding(
+                        "L008",
+                        "error",
+                        f"{DECISION_BODY_DIR}/{f}",
+                        0,
+                        f"{adr} 声明取代 {old}，但该 ADR 不存在",
+                        "指向不存在的决策（编号写错或文件丢失）",
+                    )
+                )
                 continue
             # 反向：旧的必须回指 superseded_by = 本条
             back = bodies[old].get("superseded_by", "").strip().upper()
             back_status = bodies[old].get("status", "").strip().lower()
             if back != adr:
-                out.append(Finding(
-                    "L008", "error", f"{DECISION_BODY_DIR}/{bodies[old].get('_file','')}", 0,
-                    f"{adr} 声明取代 {old}，但 {old} 未回指（superseded_by 应为 {adr}）",
-                    "双向指针缺一侧 → 链路断裂，Agent 可能顺旧指针继续走"
-                    + (f"；且 {old} 状态仍为 {back_status}，未标记为 superseded"
-                       if back_status != "superseded" else ""),
-                ))
+                out.append(
+                    Finding(
+                        "L008",
+                        "error",
+                        f"{DECISION_BODY_DIR}/{bodies[old].get('_file', '')}",
+                        0,
+                        f"{adr} 声明取代 {old}，但 {old} 未回指（superseded_by 应为 {adr}）",
+                        "双向指针缺一侧 → 链路断裂，Agent 可能顺旧指针继续走"
+                        + (
+                            f"；且 {old} 状态仍为 {back_status}，未标记为 superseded"
+                            if back_status != "superseded"
+                            else ""
+                        ),
+                    )
+                )
     return out
 
 
@@ -813,42 +979,64 @@ def check_l009(root: str, bodies: dict[str, dict[str, str]]) -> list[Finding]:
         # （阳性对照抓到的 bug：原实现把这条放在 ledger 检查之后，
         #   未登记的 ADR 会 continue 跳过，非法状态值被静默漏过）
         if body_status and body_status not in VALID_STATUS:
-            out.append(Finding(
-                "L009", "error", f"{DECISION_BODY_DIR}/{fm.get('_file','')}", 0,
-                f"{adr} 状态值非法: {body_status}",
-                f"必须为五态之一: {', '.join(sorted(VALID_STATUS))}",
-            ))
+            out.append(
+                Finding(
+                    "L009",
+                    "error",
+                    f"{DECISION_BODY_DIR}/{fm.get('_file', '')}",
+                    0,
+                    f"{adr} 状态值非法: {body_status}",
+                    f"必须为五态之一: {', '.join(sorted(VALID_STATUS))}",
+                )
+            )
 
         # ② 未登记台账
         if adr not in ledger:
-            out.append(Finding(
-                "L009", "warn", f"{DECISION_BODY_DIR}/{fm.get('_file','')}", 0,
-                f"{adr} 有正文但未登记到 DECISIONS.md 状态表",
-                "台账是唯一权威源 → 未登记的决策等于不存在",
-            ))
+            out.append(
+                Finding(
+                    "L009",
+                    "warn",
+                    f"{DECISION_BODY_DIR}/{fm.get('_file', '')}",
+                    0,
+                    f"{adr} 有正文但未登记到 DECISIONS.md 状态表",
+                    "台账是唯一权威源 → 未登记的决策等于不存在",
+                )
+            )
             continue
 
         # ③ 台账与正文状态一致性
         ledger_status = ledger[adr]["status"]
         if body_status and ledger_status and body_status != ledger_status:
-            out.append(Finding(
-                "L009", "error", f"{DECISION_BODY_DIR}/{fm.get('_file','')}", 0,
-                f"{adr} 状态不一致：正文={body_status} / 台账={ledger_status}",
-                "以台账为准，但两者必须同步改（Agent 可能只读到其中一处）",
-            ))
+            out.append(
+                Finding(
+                    "L009",
+                    "error",
+                    f"{DECISION_BODY_DIR}/{fm.get('_file', '')}",
+                    0,
+                    f"{adr} 状态不一致：正文={body_status} / 台账={ledger_status}",
+                    "以台账为准，但两者必须同步改（Agent 可能只读到其中一处）",
+                )
+            )
     return out
     # 台账登记了但正文不存在
     for adr in sorted(ledger):
         if adr not in bodies:
-            out.append(Finding(
-                "L009", "error", DECISIONS_LEDGER, 0,
-                f"台账登记了 {adr} 但 decisions/ 下无对应正文",
-                "死指针 → 顺着台账读不到论证",
-            ))
+            out.append(
+                Finding(
+                    "L009",
+                    "error",
+                    DECISIONS_LEDGER,
+                    0,
+                    f"台账登记了 {adr} 但 decisions/ 下无对应正文",
+                    "死指针 → 顺着台账读不到论证",
+                )
+            )
     return out
 
 
-def check_l010(root: str, docs: list[str], bodies: dict[str, dict[str, str]]) -> list[Finding]:
+def check_l010(
+    root: str, docs: list[str], bodies: dict[str, dict[str, str]]
+) -> list[Finding]:
     """L010 引用已失效决策（STALE 检测）。
 
     文档头部写 `<!-- depends-on: ADR-010 -->`，若依赖的决策已失效 → 报 STALE。
@@ -878,11 +1066,16 @@ def check_l010(root: str, docs: list[str], bodies: dict[str, dict[str, str]]) ->
                 for ref in parse_list_field(m.group(1)):
                     ref = ref.upper()
                     if ref in dead:
-                        out.append(Finding(
-                            "L010", "warn", rel(root, d), i,
-                            f"STALE：本文件依赖的 {ref} 已失效（{dead[ref]}）",
-                            "先读 DECISIONS.md 确认现行决策，然后更新本文或移入 archive/",
-                        ))
+                        out.append(
+                            Finding(
+                                "L010",
+                                "warn",
+                                rel(root, d),
+                                i,
+                                f"STALE：本文件依赖的 {ref} 已失效（{dead[ref]}）",
+                                "先读 DECISIONS.md 确认现行决策，然后更新本文或移入 archive/",
+                            )
+                        )
     return out
 
 
@@ -899,43 +1092,68 @@ def check_l011(root: str, bodies: dict[str, dict[str, str]]) -> list[Finding]:
             continue
         f = fm.get("_file", "")
         if not fm.get("gap", "").strip():
-            out.append(Finding(
-                "L011", "error", f"{DECISION_BODY_DIR}/{f}", 0,
-                f"{adr} 状态为 partial 但 gap 为空",
-                "已决未落地必须写明『还差什么』，否则新 Agent 会以为已生效",
-            ))
+            out.append(
+                Finding(
+                    "L011",
+                    "error",
+                    f"{DECISION_BODY_DIR}/{f}",
+                    0,
+                    f"{adr} 状态为 partial 但 gap 为空",
+                    "已决未落地必须写明『还差什么』，否则新 Agent 会以为已生效",
+                )
+            )
         if not fm.get("blocked_by", "").strip():
-            out.append(Finding(
-                "L011", "error", f"{DECISION_BODY_DIR}/{f}", 0,
-                f"{adr} 状态为 partial 但 blocked_by 为空",
-                "必须写明『为何没做』——这是后续能否接手的唯一线索",
-            ))
+            out.append(
+                Finding(
+                    "L011",
+                    "error",
+                    f"{DECISION_BODY_DIR}/{f}",
+                    0,
+                    f"{adr} 状态为 partial 但 blocked_by 为空",
+                    "必须写明『为何没做』——这是后续能否接手的唯一线索",
+                )
+            )
     return out
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="harness 一致性与漂移检查")
     ap.add_argument("--root", default=None, help="仓库根（默认从脚本位置推断）")
-    ap.add_argument("--only", default=None, help="只跑指定规则，逗号分隔（如 L003,L002）")
-    ap.add_argument("--scope", default="governance", choices=["governance", "all"],
-                    help="governance=只扫治理文档（默认，低噪音）；all=全量盘库")
+    ap.add_argument(
+        "--only", default=None, help="只跑指定规则，逗号分隔（如 L003,L002）"
+    )
+    ap.add_argument(
+        "--scope",
+        default="governance",
+        choices=["governance", "all"],
+        help="governance=只扫治理文档（默认，低噪音）；all=全量盘库",
+    )
     ap.add_argument("--max-read-list", type=int, default=5, help="强制阅读清单项数阈值")
     ap.add_argument("--stale-days", type=int, default=90, help="文档过期天数阈值")
-    ap.add_argument("--explain-skip", action="store_true",
-                    help="打印所有『没读到而被静默跳过』的文件（防假成功）")
+    ap.add_argument(
+        "--explain-skip",
+        action="store_true",
+        help="打印所有『没读到而被静默跳过』的文件（防假成功）",
+    )
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
     args = ap.parse_args(argv)
 
-    root = os.path.abspath(args.root) if args.root else \
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    root = (
+        os.path.abspath(args.root)
+        if args.root
+        else os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    )
     if not os.path.isdir(root):
         print(f"[!] 仓库根不存在: {root}", file=sys.stderr)
         return 2
 
     docs = collect_docs(root, args.scope)
     if not docs:
-        print("[!] 未找到任何 harness 文档 —— 这本身就是异常，请检查 --root。", file=sys.stderr)
+        print(
+            "[!] 未找到任何 harness 文档 —— 这本身就是异常，请检查 --root。",
+            file=sys.stderr,
+        )
         return 2
 
     only = set(args.only.split(",")) if args.only else set(ALL_CHECKS)
@@ -973,26 +1191,39 @@ def main(argv: list[str] | None = None) -> int:
                 findings += check_l011(root, bodies)
         else:
             # 显式声明跳过原因（不静默）
-            print(f"[SKIP] {DECISION_BODY_DIR}/ 不存在 → 跳过决策演进检查 "
-                  f"({', '.join(sorted(decision_checks))})",
-                  file=sys.stderr)
+            print(
+                f"[SKIP] {DECISION_BODY_DIR}/ 不存在 → 跳过决策演进检查 "
+                f"({', '.join(sorted(decision_checks))})",
+                file=sys.stderr,
+            )
 
     errors = [f for f in findings if f.level == "error"]
     exit_code = 1 if errors else 0
 
     if args.json:
-        print(json.dumps({
-            "version": VERSION, "root": root.replace("\\", "/"),
-            "docs_scanned": len(docs),
-            "counts": {"error": len(errors),
-                       "warn": len(findings) - len(errors)},
-            "findings": [asdict(f) for f in findings],
-            "exit_code": exit_code,
-        }, ensure_ascii=False, indent=2))
+        print(
+            json.dumps(
+                {
+                    "version": VERSION,
+                    "root": root.replace("\\", "/"),
+                    "docs_scanned": len(docs),
+                    "counts": {
+                        "error": len(errors),
+                        "warn": len(findings) - len(errors),
+                    },
+                    "findings": [asdict(f) for f in findings],
+                    "exit_code": exit_code,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
         return exit_code
 
     print(f"\nharness 一致性检查 — {root}")
-    print(f"扫描 {len(docs)} 份文档 · 发现 {len(errors)} ERROR / {len(findings) - len(errors)} WARN")
+    print(
+        f"扫描 {len(docs)} 份文档 · 发现 {len(errors)} ERROR / {len(findings) - len(errors)} WARN"
+    )
     print("=" * 64)
 
     by_rule: dict[str, list[Finding]] = {}

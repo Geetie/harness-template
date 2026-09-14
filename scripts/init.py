@@ -143,9 +143,9 @@ def build_required(root: str, modules: dict[str, bool]) -> tuple[list, list[str]
     skipped: list[str] = []
 
     for mod, on in modules.items():
-        entries = list(MODULE_FILES.get(mod, [])) + \
-            [(MODULE_LAYERS.get(mod, "③验证层"), s)
-             for s in MODULE_SCRIPTS.get(mod, [])]
+        entries = list(MODULE_FILES.get(mod, [])) + [
+            (MODULE_LAYERS.get(mod, "③验证层"), s) for s in MODULE_SCRIPTS.get(mod, [])
+        ]
         entries = [(layer, rel) for layer, rel in entries if rel not in seen]
         if not entries:
             continue
@@ -197,8 +197,9 @@ def check_state(root: str) -> list[tuple[str, bool, str]]:
                 json.load(f)
             out.append(("feature_list.json 合法 JSON", True, ""))
         except json.JSONDecodeError as e:
-            out.append(("feature_list.json 合法 JSON", False,
-                        f"已损坏（并发写常见）: {e}"))
+            out.append(
+                ("feature_list.json 合法 JSON", False, f"已损坏（并发写常见）: {e}")
+            )
     else:
         out.append(("feature_list.json 合法 JSON", False, "文件不存在"))
     return out
@@ -207,8 +208,13 @@ def check_state(root: str) -> list[tuple[str, bool, str]]:
 def check_hooks(root: str) -> list[tuple[str, bool, str]]:
     out = []
     try:
-        r = subprocess.run(["git", "config", "--get", "core.hooksPath"],
-                           cwd=root, capture_output=True, text=True, timeout=15)
+        r = subprocess.run(
+            ["git", "config", "--get", "core.hooksPath"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
         val = r.stdout.strip()
     except (OSError, subprocess.SubprocessError) as e:
         out.append(("git hooksPath 已配置", False, f"无法读取 git 配置: {e}"))
@@ -216,9 +222,14 @@ def check_hooks(root: str) -> list[tuple[str, bool, str]]:
     if val == ".githooks":
         out.append(("git hooksPath 已配置", True, ".githooks"))
     else:
-        out.append(("git hooksPath 已配置", False,
-                    f"当前为 {val or '(未设置)'}，强制机制全部失效。"
-                    f"执行: git config core.hooksPath .githooks"))
+        out.append(
+            (
+                "git hooksPath 已配置",
+                False,
+                f"当前为 {val or '(未设置)'}，强制机制全部失效。"
+                f"执行: git config core.hooksPath .githooks",
+            )
+        )
     return out
 
 
@@ -247,8 +258,13 @@ def check_state_limits(root: str) -> list[tuple[str, bool, str]]:
                 over.append(f"{rel} {n}行>{max_lines}行")
 
     if over:
-        return [("状态文件未超限", False,
-                 "；".join(over) + " → 跑 python scripts/state_health.py --archive")]
+        return [
+            (
+                "状态文件未超限",
+                False,
+                "；".join(over) + " → 跑 python scripts/state_health.py --archive",
+            )
+        ]
     return [("状态文件未超限", True, "")]
 
 
@@ -256,13 +272,16 @@ def run_commands(root: str, cfg: dict) -> list[tuple[str, bool, str]]:
     out = []
     cmds = (cfg or {}).get("commands", {})
     if not cmds:
-        out.append(("质量命令", True, "未配置（跳过）—— 在 .harness/config.json 里配 commands"))
+        out.append(
+            ("质量命令", True, "未配置（跳过）—— 在 .harness/config.json 里配 commands")
+        )
         return out
     for name, cmd in cmds.items():
         try:
-            r = subprocess.run(cmd, cwd=root, shell=True,
-                               capture_output=True, text=True, timeout=900)
-            ok = (r.returncode == 0)
+            r = subprocess.run(
+                cmd, cwd=root, shell=True, capture_output=True, text=True, timeout=900
+            )
+            ok = r.returncode == 0
             tail = (r.stdout or r.stderr or "").strip().splitlines()
             detail = f"exit={r.returncode}"
             if tail:
@@ -275,13 +294,77 @@ def run_commands(root: str, cfg: dict) -> list[tuple[str, bool, str]]:
     return out
 
 
+def check_quality_tools(root: str, cfg: dict) -> list[tuple[str, bool, str]]:
+    """代码规范工具是否就位（ESLint/Prettier/ruff…）。
+
+    这里**只体检不执行**（执行交给 `quality.py --check`），
+    因为体检要快、要能在没装任何工具的环境里跑。
+
+    **不算失败**：工具没装只是"少一道保险"，不该让 init 报红 ——
+    否则新 clone 的仓库永远不健康，人就会忽略这个检查（降噪即有效性）。
+    但会明确写清"未安装 + 怎么装"，不允许静默。
+    """
+    out: list[tuple[str, bool, str]] = []
+    quality = (cfg or {}).get("quality") or {}
+    if not quality:
+        out.append(
+            (
+                "代码规范工具",
+                True,
+                "未配置 quality 段（跳过）—— "
+                "改 .harness/config.json 或换 --stack 重生成",
+            )
+        )
+        return out
+
+    try:
+        import quality as Q
+    except ImportError:
+        out.append(("代码规范工具", True, "scripts/quality.py 缺失（模块未完整安装）"))
+        return out
+
+    missing = []
+    configured = 0
+    for key in ("typecheck", "lint", "format_check"):
+        cmd = quality.get(key)
+        if not cmd:
+            continue
+        configured += 1
+        try:
+            ok, why = Q.tool_available(cmd)
+        except (OSError, subprocess.SubprocessError) as e:
+            # 探测本身出错也要说清（不静默），但不算失败
+            missing.append(f"{key}: 探测失败 {e.__class__.__name__}")
+            continue
+        if not ok:
+            missing.append(f"{key}（{why}）")
+
+    if not configured:
+        out.append(("代码规范工具", True, "quality 段为空（跳过）"))
+    elif missing:
+        out.append(
+            (
+                "代码规范工具",
+                True,
+                f"⚠ {len(missing)} 项工具未安装，提交时会跳过: " + "; ".join(missing),
+            )
+        )
+    else:
+        out.append(("代码规范工具", True, f"{configured} 项已就绪"))
+    return out
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="harness 环境健康检查")
     ap.add_argument("--root", default=None, help="仓库根（默认自动推断）")
     ap.add_argument("--skip-commands", action="store_true", help="跳过质量命令（快检）")
     ap.add_argument("--modules", action="store_true", help="只打印当前模块开关表")
-    ap.add_argument("--preset", default=None, choices=sorted(PRESETS),
-                    help="按档位覆盖模块开关（仅本次生效，不写配置）")
+    ap.add_argument(
+        "--preset",
+        default=None,
+        choices=sorted(PRESETS),
+        help="按档位覆盖模块开关（仅本次生效，不写配置）",
+    )
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
     args = ap.parse_args(argv)
@@ -329,20 +412,38 @@ def main(argv=None) -> int:
     else:
         print("[SKIP] state 模块未启用，跳过状态文件完整性与体积检查", file=sys.stderr)
     results += [("③验证层", n, ok, d) for (n, ok, d) in check_hooks(root)]
+    if modules.get("code-quality", True):
+        results += [
+            ("③验证层", n, ok, d) for (n, ok, d) in check_quality_tools(root, cfg or {})
+        ]
+    else:
+        print("[SKIP] code-quality 模块未启用，跳过代码规范工具检查", file=sys.stderr)
     if not args.skip_commands:
-        results += [("③验证层", n, ok, d) for (n, ok, d) in run_commands(root, cfg or {})]
+        results += [
+            ("③验证层", n, ok, d) for (n, ok, d) in run_commands(root, cfg or {})
+        ]
 
     failures = [r for r in results if not r[2]]
     exit_code = 1 if failures else 0
 
     if args.json:
-        print(json.dumps({
-            "version": VERSION, "root": root.replace("\\", "/"),
-            "total": len(results), "failed": len(failures),
-            "exit_code": exit_code,
-            "checks": [{"category": c, "name": n, "ok": ok, "detail": d}
-                       for (c, n, ok, d) in results],
-        }, ensure_ascii=False, indent=2))
+        print(
+            json.dumps(
+                {
+                    "version": VERSION,
+                    "root": root.replace("\\", "/"),
+                    "total": len(results),
+                    "failed": len(failures),
+                    "exit_code": exit_code,
+                    "checks": [
+                        {"category": c, "name": n, "ok": ok, "detail": d}
+                        for (c, n, ok, d) in results
+                    ],
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
         return exit_code
 
     print(f"\nharness 环境健康检查 — {root}\n" + "=" * 60)

@@ -100,18 +100,23 @@ def find_template(explicit: str | None) -> tuple[str | None, str]:
         if os.path.isdir(cand):
             return cand, f"同级目录命中: {cand}"
 
-    return None, ("自动定位失败，已尝试: " + "; ".join(tried)
-                  + "\n  请用 --template <模板仓库路径> 指定，"
-                    "或设置环境变量 HARNESS_TEMPLATE")
+    return None, (
+        "自动定位失败，已尝试: "
+        + "; ".join(tried)
+        + "\n  请用 --template <模板仓库路径> 指定，"
+        "或设置环境变量 HARNESS_TEMPLATE"
+    )
 
 
 def load_project_config(project: str) -> tuple[dict | None, str]:
     """读项目的 .harness/config.json。失败返回原因，绝不静默。"""
     p = os.path.join(project, ".harness", "config.json")
     if not os.path.isfile(p):
-        return None, (f"找不到 {p}\n"
-                      "  → 这个目录不是 harness 模板生成的项目（或 .harness 被删了）。\n"
-                      "  同步器拒绝猜测它的模块配置，以免覆盖你的文件。")
+        return None, (
+            f"找不到 {p}\n"
+            "  → 这个目录不是 harness 模板生成的项目（或 .harness 被删了）。\n"
+            "  同步器拒绝猜测它的模块配置，以免覆盖你的文件。"
+        )
     try:
         with open(p, "r", encoding="utf-8") as f:
             cfg = json.load(f)
@@ -128,8 +133,11 @@ def collect_project_rels(project: str) -> list[str]:
     """列出项目里参与同步的相对路径（排除 .git 等）。"""
     out = []
     for dp, dn, fn in os.walk(project):
-        dn[:] = [d for d in dn
-                 if d not in (".git", "__pycache__", "node_modules", ".venv", "_selftest")]
+        dn[:] = [
+            d
+            for d in dn
+            if d not in (".git", "__pycache__", "node_modules", ".venv", "_selftest")
+        ]
         for f in fn:
             rel = os.path.relpath(os.path.join(dp, f), project).replace("\\", "/")
             out.append(rel)
@@ -145,6 +153,7 @@ def collect_template_rels(template: str, modules: dict) -> list[str]:
     - EXCLUDE_FILES（评审稿等）本就不该复制，若列进来会被当成"可新增项"反复报
     """
     from module_manifest import EXCLUDE_FILES, module_paths, norm_rel
+
     mpaths = module_paths()
     skip = set()
     for mod, on in (modules or {}).items():
@@ -155,8 +164,11 @@ def collect_template_rels(template: str, modules: dict) -> list[str]:
 
     out = []
     for dp, dn, fn in os.walk(template):
-        dn[:] = [d for d in dn
-                 if d not in (".git", "__pycache__", "node_modules", ".venv", "_selftest")]
+        dn[:] = [
+            d
+            for d in dn
+            if d not in (".git", "__pycache__", "node_modules", ".venv", "_selftest")
+        ]
         for f in fn:
             rel = os.path.relpath(os.path.join(dp, f), template).replace("\\", "/")
             if rel in skip or rel in exclude or SYNC.is_never_sync(rel):
@@ -170,17 +182,23 @@ def major(v: str) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(
-        description="把 harness 模板的改进同步进已生成的项目")
+    ap = argparse.ArgumentParser(description="把 harness 模板的改进同步进已生成的项目")
     ap.add_argument("--project", default=None, help="项目根（默认当前目录）")
     ap.add_argument("--template", default=None, help="模板仓库根（默认自动定位）")
-    ap.add_argument("--check", action="store_true",
-                    help="只报告差异，不写任何文件（默认行为）")
+    ap.add_argument(
+        "--check", action="store_true", help="只报告差异，不写任何文件（默认行为）"
+    )
     ap.add_argument("--apply", action="store_true", help="实际应用同步")
-    ap.add_argument("--force", action="store_true",
-                    help="连冲突项一起覆盖（会丢本地改动，需配合 --apply）")
-    ap.add_argument("--adopt-now", action="store_true",
-                    help="把项目当前状态设为同步基线（旧项目补救用，不复制任何文件）")
+    ap.add_argument(
+        "--force",
+        action="store_true",
+        help="连冲突项一起覆盖（会丢本地改动，需配合 --apply）",
+    )
+    ap.add_argument(
+        "--adopt-now",
+        action="store_true",
+        help="把项目当前状态设为同步基线（旧项目补救用，不复制任何文件）",
+    )
     ap.add_argument("--json", action="store_true", help="机器可读输出")
     ap.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
     args = ap.parse_args(argv)
@@ -202,11 +220,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[!] {tnote}", file=sys.stderr)
         return 2
     if not os.path.isfile(os.path.join(template, TEMPLATE_MARKER)):
-        print(f"[!] {template} 看起来不是 harness 模板仓库"
-              f"（缺少 {TEMPLATE_MARKER}）\n"
-              f"  定位依据: {tnote}\n"
-              f"  若确定它是模板仓库，用 --template 显式指定正确路径。",
-              file=sys.stderr)
+        print(
+            f"[!] {template} 看起来不是 harness 模板仓库"
+            f"（缺少 {TEMPLATE_MARKER}）\n"
+            f"  定位依据: {tnote}\n"
+            f"  若确定它是模板仓库，用 --template 显式指定正确路径。",
+            file=sys.stderr,
+        )
         return 2
 
     # ── 版本兼容性 ──
@@ -214,16 +234,23 @@ def main(argv: list[str] | None = None) -> int:
     proj_ver = str(sync_info.get("template_version", ""))
     base: dict[str, str] = sync_info.get("files") or {}
     if not isinstance(base, dict):
-        print("[!] config.json 的 template_sync.files 格式不对（应为对象）",
-              file=sys.stderr)
+        print(
+            "[!] config.json 的 template_sync.files 格式不对（应为对象）",
+            file=sys.stderr,
+        )
         return 2
 
-    if proj_ver and major(proj_ver) != major(TEMPLATE_VERSION) \
-            and not SYNC_ALLOW_CROSS_MAJOR:
-        print(f"[!] MAJOR 版本跨代（项目 {proj_ver} → 模板 {TEMPLATE_VERSION}）\n"
-              "  跨代变更可能含架构级调整，自动同步不安全。\n"
-              "  请人工迁移，或阅读模板的 MAINTENANCE.md §5 维护史。",
-              file=sys.stderr)
+    if (
+        proj_ver
+        and major(proj_ver) != major(TEMPLATE_VERSION)
+        and not SYNC_ALLOW_CROSS_MAJOR
+    ):
+        print(
+            f"[!] MAJOR 版本跨代（项目 {proj_ver} → 模板 {TEMPLATE_VERSION}）\n"
+            "  跨代变更可能含架构级调整，自动同步不安全。\n"
+            "  请人工迁移，或阅读模板的 MAINTENANCE.md §5 维护史。",
+            file=sys.stderr,
+        )
         return 2
 
     # ── 补充基线（旧项目补救）：不复制任何文件，只把「现在」记为基线 ──
@@ -256,8 +283,10 @@ def main(argv: list[str] | None = None) -> int:
     # （模板 `{{PROJECT_NAME}}` vs 项目 `myapp`，永远不等 → 误报"有更新"）。
     subs = sync_info.get("substitutions") or {}
     if not isinstance(subs, dict):
-        print("[!] config.json 的 template_sync.substitutions 格式不对，已忽略",
-              file=sys.stderr)
+        print(
+            "[!] config.json 的 template_sync.substitutions 格式不对，已忽略",
+            file=sys.stderr,
+        )
         subs = {}
 
     theirs, t_fail = SYNC.snapshot(template, t_rels, substitutions=subs)
@@ -293,7 +322,9 @@ def main(argv: list[str] | None = None) -> int:
     if not base:
         print("\n⚠️  项目未记录同步基线（由旧版模板生成）")
         print("    无法判断差异是谁造成的 → **默认一个都不覆盖**，只列出差异。")
-        print("    想让它以后能自动同步，跑: python scripts/sync_template.py --apply --adopt-now")
+        print(
+            "    想让它以后能自动同步，跑: python scripts/sync_template.py --apply --adopt-now"
+        )
         print("    （见下方说明）")
 
     print(f"\n  可安全新增  {len(res['added'])} 项")
@@ -314,8 +345,11 @@ def main(argv: list[str] | None = None) -> int:
         print("\n✅ 已是最新，无需同步。")
         return 0
 
-    for title, key in (("可安全新增", "added"), ("可安全更新", "updatable"),
-                       ("需要你裁决", "conflict")):
+    for title, key in (
+        ("可安全新增", "added"),
+        ("可安全更新", "updatable"),
+        ("需要你裁决", "conflict"),
+    ):
         if not res[key]:
             continue
         print(f"\n--- {title} ({len(res[key])}) ---")
@@ -337,7 +371,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.force:
         targets += res["conflict"]
         if res["conflict"]:
-            print(f"\n⚠️  --force: {len(res['conflict'])} 项冲突将被覆盖（本地改动会丢失）")
+            print(
+                f"\n⚠️  --force: {len(res['conflict'])} 项冲突将被覆盖（本地改动会丢失）"
+            )
 
     if not targets:
         print("\n没有可安全应用的项。")

@@ -84,33 +84,60 @@ STACKS = {
     },
     "next-ts": {
         "code_root": ".",
-        "commands": {
+        "commands": {"test": "npx vitest run"},
+        "quality": {
             "typecheck": "npm run typecheck",
-            "lint": "npm run lint",
-            "test": "npx vitest run",
+            "lint": "npx eslint .",
+            "lint_fix": "npx eslint . --fix",
+            "format_check": "npx prettier --check .",
+            "format_fix": "npx prettier --write .",
         },
-        "tech_stack": "Next.js + React + TypeScript + Vitest",
+        "tech_stack": "Next.js + React + TypeScript + Vitest + ESLint + Prettier",
     },
     "python": {
         "code_root": "src",
-        "commands": {
+        "commands": {"test": "pytest -q"},
+        "quality": {
             "lint": "ruff check .",
-            "test": "pytest -q",
+            "lint_fix": "ruff check . --fix",
+            "format_check": "ruff format --check .",
+            "format_fix": "ruff format .",
         },
-        "tech_stack": "Python + pytest + ruff",
+        "tech_stack": "Python + pytest + ruff（lint 与 format 二合一）",
     },
     "tauri": {
         "code_root": "src",
-        "commands": {
+        "commands": {"test": "npx vitest run"},
+        "quality": {
             "typecheck": "npm run typecheck",
-            "test": "npx vitest run",
+            "lint": "npx eslint .",
+            "lint_fix": "npx eslint . --fix",
+            "format_check": "npx prettier --check .",
+            "format_fix": "npx prettier --write .",
         },
-        "tech_stack": "Tauri 2 + React + TypeScript + Rust",
+        "tech_stack": "Tauri 2 + React + TypeScript + Rust（前端侧 ESLint/Prettier）",
+    },
+    "java": {
+        "code_root": "src/main/java",
+        "commands": {"test": "mvn -q test"},
+        "quality": {
+            "lint": "mvn -q checkstyle:check",
+            "format_check": "mvn -q spotless:check",
+            "format_fix": "mvn -q spotless:apply",
+        },
+        "tech_stack": "Java + Maven + Checkstyle + Spotless",
     },
 }
 
 # 占位符 → 自动填充值（未列出的保留，最后汇总成"待填清单"）  guard:allow
-AUTO_FILL_KEYS = {"PROJECT_NAME", "DATE", "BRANCH", "TECH_STACK", "CODE_ROOT", "TEST_COMMAND"}
+AUTO_FILL_KEYS = {
+    "PROJECT_NAME",
+    "DATE",
+    "BRANCH",
+    "TECH_STACK",
+    "CODE_ROOT",
+    "TEST_COMMAND",
+}
 
 PLACEHOLDER_RE = re.compile(r"\{\{([A-Z0-9_]+)\}\}")
 
@@ -121,8 +148,9 @@ def is_text(path: str) -> bool:
     return os.path.splitext(path)[1].lower() in TEXT_EXT
 
 
-def resolve_modules(preset_name: str | None, extra_off: list[str] | None = None
-                    ) -> tuple[dict[str, bool], list[str]]:
+def resolve_modules(
+    preset_name: str | None, extra_off: list[str] | None = None
+) -> tuple[dict[str, bool], list[str]]:
     """按档位解析模块开关，自动补齐依赖。
 
     返回 (开关表, 说明列表)。依赖被自动启用时会记入说明（不静默）。
@@ -131,7 +159,7 @@ def resolve_modules(preset_name: str | None, extra_off: list[str] | None = None
         on = set(PRESETS[preset_name])
     else:
         on = set(PRESETS["full"])
-    for m in (extra_off or []):
+    for m in extra_off or []:
         on.discard(m)
 
     raw = {m: (m in on) for m in MODULE_DEPS}
@@ -174,7 +202,9 @@ def should_copy(rel_path: str, modules: dict[str, bool]) -> bool:
     return True
 
 
-def copy_tree(src: str, dst: str, modules: dict[str, bool] | None = None) -> tuple[int, int]:
+def copy_tree(
+    src: str, dst: str, modules: dict[str, bool] | None = None
+) -> tuple[int, int]:
     """复制模板结构，返回 (复制的文件数, 跳过的文件数)。"""
     count = 0
     skipped = 0
@@ -183,8 +213,9 @@ def copy_tree(src: str, dst: str, modules: dict[str, bool] | None = None) -> tup
         if rel_dir == ".":
             dirnames[:] = [d for d in dirnames if d not in EXCLUDE_TOP]
         else:
-            dirnames[:] = [d for d in dirnames
-                           if d not in EXCLUDE_TOP and not d.startswith(".")]
+            dirnames[:] = [
+                d for d in dirnames if d not in EXCLUDE_TOP and not d.startswith(".")
+            ]
         for fn in filenames:
             if os.path.splitext(fn)[1].lower() in EXCLUDE_EXT:
                 continue
@@ -337,8 +368,11 @@ def prune_module_refs(root: str, modules: dict[str, bool]) -> int:
             except OSError as e:
                 # 不静默：清理失败会让文档残留指向已关闭模块的引用（死链），
                 # 必须让用户知道哪个文件没清理成功。
-                print(f"[!] 引用清理失败（该文件仍可能含死链）: "
-                      f"{os.path.relpath(p, root)} — {e}", file=sys.stderr)
+                print(
+                    f"[!] 引用清理失败（该文件仍可能含死链）: "
+                    f"{os.path.relpath(p, root)} — {e}",
+                    file=sys.stderr,
+                )
     return changed_files
 
 
@@ -346,13 +380,28 @@ def setup_git(root: str) -> list[str]:
     msgs = []
     try:
         if not os.path.isdir(os.path.join(root, ".git")):
-            r = subprocess.run(["git", "init"], cwd=root, capture_output=True,
-                               text=True, timeout=60)
-            msgs.append("git init: " + ("成功" if r.returncode == 0 else f"失败 {r.stderr.strip()}"))
-        r = subprocess.run(["git", "config", "core.hooksPath", ".githooks"],
-                           cwd=root, capture_output=True, text=True, timeout=30)
-        msgs.append("hooksPath: " + (".githooks 已配置" if r.returncode == 0
-                                     else f"配置失败 {r.stderr.strip()}"))
+            r = subprocess.run(
+                ["git", "init"], cwd=root, capture_output=True, text=True, timeout=60
+            )
+            msgs.append(
+                "git init: "
+                + ("成功" if r.returncode == 0 else f"失败 {r.stderr.strip()}")
+            )
+        r = subprocess.run(
+            ["git", "config", "core.hooksPath", ".githooks"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        msgs.append(
+            "hooksPath: "
+            + (
+                ".githooks 已配置"
+                if r.returncode == 0
+                else f"配置失败 {r.stderr.strip()}"
+            )
+        )
     except (OSError, subprocess.SubprocessError) as e:
         msgs.append(f"git 操作失败（可手动执行）: {e}")
     return msgs
@@ -362,23 +411,34 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="从 harness-template 初始化新项目")
     ap.add_argument("--name", required=True, help="项目名")
     ap.add_argument("--stack", default="generic", choices=list(STACKS))
-    ap.add_argument("--preset", default="full", choices=sorted(PRESETS),
-                    help="模块档位: minimal | standard | full（默认 full）")
-    ap.add_argument("--disable", default=None,
-                    help="额外关闭模块，逗号分隔（如 routing,integration-check）")
+    ap.add_argument(
+        "--preset",
+        default="full",
+        choices=sorted(PRESETS),
+        help="模块档位: minimal | standard | full（默认 full）",
+    )
+    ap.add_argument(
+        "--disable",
+        default=None,
+        help="额外关闭模块，逗号分隔（如 routing,integration-check）",
+    )
     ap.add_argument("--in-place", action="store_true", help="在当前目录原地初始化")
     ap.add_argument("--target", default=None, help="目标父目录（生成 <target>/<name>）")
     ap.add_argument("--yes", action="store_true", help="跳过确认")
-    ap.add_argument("--force", action="store_true",
-                    help="配合 --in-place：允许在模板仓库本体上就地初始化"
-                         "（会把模板占位符写死，通常不该这么做）")
+    ap.add_argument(
+        "--force",
+        action="store_true",
+        help="配合 --in-place：允许在模板仓库本体上就地初始化"
+        "（会把模板占位符写死，通常不该这么做）",
+    )
     ap.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
     args = ap.parse_args(argv)
 
     template_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
     modules, mod_notes = resolve_modules(
-        args.preset, [s.strip() for s in (args.disable or "").split(",") if s.strip()])
+        args.preset, [s.strip() for s in (args.disable or "").split(",") if s.strip()]
+    )
 
     if args.in_place:
         dst = template_root
@@ -386,13 +446,17 @@ def main(argv=None) -> int:
         # 如果这棵树是模板仓库本体，替换会把 {{PROJECT_NAME}} 之类的占位符
         # 就地写死，模板从此不可用（而且 .harness 现已纳入替换范围，破坏面更大）。
         # 真要在模板仓库上跑，必须显式 --force 表明你知道后果。
-        if os.path.isfile(os.path.join(dst, ".harness", "TEMPLATE-REPO")) \
-                and not args.force:
-            print("[!] 拒绝执行：当前目录是 harness 模板仓库本体"
-                  "（检测到 .harness/TEMPLATE-REPO）。\n"
-                  "    --in-place 会把模板里的占位符就地写死，模板将不可再用。\n"
-                  "    若确要如此，加 --force；否则请用 --target <父目录> 生成新项目。",
-                  file=sys.stderr)
+        if (
+            os.path.isfile(os.path.join(dst, ".harness", "TEMPLATE-REPO"))
+            and not args.force
+        ):
+            print(
+                "[!] 拒绝执行：当前目录是 harness 模板仓库本体"
+                "（检测到 .harness/TEMPLATE-REPO）。\n"
+                "    --in-place 会把模板里的占位符就地写死，模板将不可再用。\n"
+                "    若确要如此，加 --force；否则请用 --target <父目录> 生成新项目。",
+                file=sys.stderr,
+            )
             return 2
     else:
         if not args.target:
@@ -404,7 +468,9 @@ def main(argv=None) -> int:
             return 2
         os.makedirs(dst, exist_ok=True)
         n, sk = copy_tree(template_root, dst, modules)
-        print(f"复制 {n} 个文件 → {dst}" + (f"（按模块开关跳过 {sk} 个）" if sk else ""))
+        print(
+            f"复制 {n} 个文件 → {dst}" + (f"（按模块开关跳过 {sk} 个）" if sk else "")
+        )
 
     preset = STACKS[args.stack]
     mapping = {
@@ -425,7 +491,9 @@ def main(argv=None) -> int:
     # 记在替换之后，基线 = 项目刚生成时的样子，用户后续填写才被正确识别为本地改动。
     baseline_rels = []
     for dp, dn, fn in os.walk(dst):
-        dn[:] = [d for d in dn if d not in (".git", "__pycache__", "node_modules", ".venv")]
+        dn[:] = [
+            d for d in dn if d not in (".git", "__pycache__", "node_modules", ".venv")
+        ]
         for f in fn:
             rel = os.path.relpath(os.path.join(dp, f), dst).replace("\\", "/")
             if not SYNC.is_never_sync(rel):
@@ -433,8 +501,10 @@ def main(argv=None) -> int:
     base_snap, base_fail = SYNC.snapshot(dst, baseline_rels)
     if base_fail:
         # 不静默：基线记不全 = 将来同步时会把"读不到的文件"误判成冲突
-        print(f"[!] {len(base_fail)} 个文件未能记入同步基线（将来同步会保守跳过）:",
-              file=sys.stderr)
+        print(
+            f"[!] {len(base_fail)} 个文件未能记入同步基线（将来同步会保守跳过）:",
+            file=sys.stderr,
+        )
         for s in base_fail[:5]:
             print(f"    · {s}", file=sys.stderr)
 
@@ -449,6 +519,11 @@ def main(argv=None) -> int:
         "code_root": preset["code_root"],
         "commands": preset["commands"],
         "baseline": {"test": ""},
+        # 代码规范工具（ESLint/Prettier/ruff…）接在哪：写进 quality 段，
+        # 由 scripts/quality.py 统一调度（--doctor / --check / --fix / --staged）。
+        # 与 commands 分开的原因：commands 全量跑、很慢、且分不清哪个能自动修；
+        # quality 知道哪些键会改文件（lint_fix/format_fix），只在 --fix 时才跑。
+        **({"quality": preset["quality"]} if preset.get("quality") else {}),
         SYNC.SYNC_FIELD: {
             "template_version": VERSION,
             "generated_at": date.today().isoformat(),
@@ -493,15 +568,21 @@ def main(argv=None) -> int:
             print(f"  · {{{{{key}}}}}   出现于: {', '.join(files)}{more}")
         print("\n  最关键的三个（填完它们，Agent 才真正知道项目是什么）：")
         print("    1. {{PROJECT_ONE_LINER}} — 一句话说清项目是什么")
-        print("    2. {{CORE_JOURNEY}}       — 核心用户旅程（产品可用 = 这条路径跑得通）")
+        print(
+            "    2. {{CORE_JOURNEY}}       — 核心用户旅程（产品可用 = 这条路径跑得通）"
+        )
         print("    3. {{ARCH_TREE}}          — 代码目录骨架")
         print("\n  填完跑: python scripts/init.py")
 
     print("\n下一步：")
-    print("  1. 填写上面列出的占位符（至少 PROJECT_ONE_LINER / CORE_JOURNEY / ARCH_TREE）")
+    print(
+        "  1. 填写上面列出的占位符（至少 PROJECT_ONE_LINER / CORE_JOURNEY / ARCH_TREE）"
+    )
     print("  2. python scripts/init.py    确认环境健康")
     print("  3. 把 AGENTS.md 交给 Agent：『读 AGENTS.md，按 §2 启动路径 Orient』")
-    print("  4. 第一个任务务必是 Phase 0 Walking Skeleton（见 .harness/planning/SPEC-TEMPLATE.md）")
+    print(
+        "  4. 第一个任务务必是 Phase 0 Walking Skeleton（见 .harness/planning/SPEC-TEMPLATE.md）"
+    )
     return 0
 
 

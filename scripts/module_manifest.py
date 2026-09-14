@@ -143,6 +143,16 @@ MODULES: dict[str, dict] = {
         ],
         "deps": ["instructions"],
     },
+    "code-quality": {
+        "desc": "代码规范层：ESLint/Prettier/ruff 等 lint+format 的统一接线与门禁",
+        "layer": "③验证层",
+        "owned": [
+            "scripts/quality.py",
+            ".harness/CODE-QUALITY.md",
+        ],
+        # 依赖 verification：pre-commit 由它装载，且 quality.py 复用版本真相源。
+        "deps": ["verification"],
+    },
     "upgrade": {
         "desc": "升级层：把模板的改进三向合并回已生成的项目（sync_template.py）",
         "layer": "③验证层",
@@ -174,36 +184,65 @@ MODULES: dict[str, dict] = {
 # required 是"少这份就算这层不完整"（体检红线，越少越好，避免噪音）。
 MODULE_REQUIRED: dict[str, list[str]] = {
     "instructions": ["AGENTS.md"],
-    "state": [".harness/state/progress.md",
-              ".harness/state/feature_list.json",
-              ".harness/state/session-handoff.md"],
+    "state": [
+        ".harness/state/progress.md",
+        ".harness/state/feature_list.json",
+        ".harness/state/session-handoff.md",
+    ],
     "verification": [".harness/VERIFICATION.md"],
-    "memory": [".harness/memory/lessons.md",
-               ".harness/memory/failure-modes.md",
-               ".harness/memory/GLOBAL-LESSONS.md"],
-    "delivery": [".harness/delivery/README.md",
-                 ".harness/delivery/DoD-TEMPLATE.md",
-                 ".harness/delivery/acceptance.md",
-                 ".harness/delivery/hardening-checklist.md"],
+    "memory": [
+        ".harness/memory/lessons.md",
+        ".harness/memory/failure-modes.md",
+        ".harness/memory/GLOBAL-LESSONS.md",
+    ],
+    "delivery": [
+        ".harness/delivery/README.md",
+        ".harness/delivery/DoD-TEMPLATE.md",
+        ".harness/delivery/acceptance.md",
+        ".harness/delivery/hardening-checklist.md",
+    ],
     "routing": [".harness/routing/ROUTER.md"],
-    "decisions": [".harness/DECISION-PROTOCOL.md",
-                  ".harness/planning/DECISIONS.md"],
-    "planning": [".harness/planning/CONSTITUTION.md",
-                 ".harness/planning/SPEC-TEMPLATE.md"],
+    "decisions": [".harness/DECISION-PROTOCOL.md", ".harness/planning/DECISIONS.md"],
+    "planning": [
+        ".harness/planning/CONSTITUTION.md",
+        ".harness/planning/SPEC-TEMPLATE.md",
+    ],
     "skills": [".harness/skills/orientation/SKILL.md"],
     "placeholder-guard": ["scripts/no_placeholder_guard.py"],
     "integration-check": ["scripts/check_integration.py"],
+    "code-quality": ["scripts/quality.py", ".harness/CODE-QUALITY.md"],
     "upgrade": ["scripts/sync_template.py", "scripts/sync_lib.py"],
 }
 
 # 三个预置档位：从少到多。minimal 是"能跑起来的最小可信骨架"。
 PRESETS: dict[str, list[str]] = {
     "minimal": ["instructions", "state", "verification", "memory"],
-    "standard": ["instructions", "state", "verification", "memory",
-                 "delivery", "planning", "placeholder-guard", "skills"],
-    "full": ["instructions", "state", "verification", "memory", "delivery",
-             "routing", "decisions", "planning", "skills",
-             "placeholder-guard", "integration-check", "upgrade"],
+    "standard": [
+        "instructions",
+        "state",
+        "verification",
+        "memory",
+        "delivery",
+        "planning",
+        "placeholder-guard",
+        "skills",
+        "code-quality",
+    ],
+    "full": [
+        "instructions",
+        "state",
+        "verification",
+        "memory",
+        "delivery",
+        "routing",
+        "decisions",
+        "planning",
+        "skills",
+        "placeholder-guard",
+        "integration-check",
+        "upgrade",
+        "code-quality",
+    ],
 }
 
 # 元文档：无论关掉哪些模块都要保留（它们解释"这个模板是什么"）
@@ -261,8 +300,9 @@ def always_files() -> list[tuple[str, str]]:
     return [(labels.get(p, "总览"), p) for p in ALWAYS_FILES]
 
 
-def resolve_modules(enabled_off: set[str] | None = None,
-                    preset: str | None = None) -> tuple[dict[str, bool], list[str]]:
+def resolve_modules(
+    enabled_off: set[str] | None = None, preset: str | None = None
+) -> tuple[dict[str, bool], list[str]]:
     """算出每个模块的最终开关，并**自动补齐依赖**。
 
     返回 (开关表, 告警列表)。告警不静默 —— 依赖被自动打开时必须让用户知道，
@@ -271,7 +311,7 @@ def resolve_modules(enabled_off: set[str] | None = None,
     off = set(enabled_off or ())
     if preset:
         keep = set(PRESETS.get(preset, PRESETS["full"]))
-        off |= (set(MODULES) - keep)
+        off |= set(MODULES) - keep
 
     on = {mid: (mid not in off) for mid in MODULES}
 
@@ -287,7 +327,8 @@ def resolve_modules(enabled_off: set[str] | None = None,
                     on[dep] = True
                     warnings.append(
                         f"模块 {mid} 依赖 {dep}，已自动启用 {dep}"
-                        f"（否则 {mid} 缺少依赖会静默降级）")
+                        f"（否则 {mid} 缺少依赖会静默降级）"
+                    )
                     changed = True
     return on, warnings
 
@@ -342,7 +383,16 @@ def owned_names() -> set[str]:
 
 if __name__ == "__main__":
     import json
-    print(json.dumps(
-        {"modules": MODULES, "presets": PRESETS,
-         "always_files": ALWAYS_FILES, "exclude_files": sorted(EXCLUDE_FILES)},
-        ensure_ascii=False, indent=2))
+
+    print(
+        json.dumps(
+            {
+                "modules": MODULES,
+                "presets": PRESETS,
+                "always_files": ALWAYS_FILES,
+                "exclude_files": sorted(EXCLUDE_FILES),
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )

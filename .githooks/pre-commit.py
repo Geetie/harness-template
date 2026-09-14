@@ -112,7 +112,8 @@ def main() -> int:
         problems.append(
             "harness 未同步：以下文件必须与代码在同一个 commit 中更新\n"
             + "".join(f"      · {m}\n" for m in missing)
-            + "      " + hint
+            + "      "
+            + hint
         )
 
     # ── 检查 2：反占位符 ──
@@ -125,7 +126,10 @@ def main() -> int:
                 try:
                     r = subprocess.run(
                         [sys.executable, guard, code_root, "--fail-on", "error"],
-                        cwd=root, capture_output=True, text=True, timeout=300,
+                        cwd=root,
+                        capture_output=True,
+                        text=True,
+                        timeout=300,
                     )
                     if r.returncode not in (0,):
                         tail = (r.stdout or r.stderr or "").strip()
@@ -143,10 +147,39 @@ def main() -> int:
                 f"      请修正 .harness/config.json"
             )
     else:
-        print("[harness] 提示：未配置 .harness/config.json 的 code_root，跳过反占位符检查。")
+        print(
+            "[harness] 提示：未配置 .harness/config.json 的 code_root，跳过反占位符检查。"
+        )
+
+    # ── 检查 3：代码规范（只跑暂存文件）──
+    # 为什么不跑全量：全量 lint 动辄几十秒，人会用 --no-verify 绕开，
+    # 门禁就自我否定了（S13：降噪即有效性）。只查暂存文件，通常 <10s。
+    # 工具没装时 quality.py 会显式跳过（不是报错），所以这里只关心它是否"失败"。
+    quality = os.path.join(root, "scripts", "quality.py")
+    if os.path.isfile(quality):
+        try:
+            r = subprocess.run(
+                [sys.executable, quality, "--staged"],
+                cwd=root,
+                capture_output=True,
+                text=True,
+                timeout=180,
+            )
+            if r.returncode not in (0,):
+                tail = (r.stdout or r.stderr or "").strip()
+                problems.append(
+                    "代码规范检查未通过（quality.py --staged）\n"
+                    + (tail[-1200:] if tail else f"      退出码 {r.returncode}")
+                    + "\n      自动修复: python scripts/quality.py --fix"
+                )
+        except subprocess.TimeoutExpired:
+            problems.append("代码规范检查超时（180s）—— 请缩小改动范围后重试")
+        except (OSError, subprocess.SubprocessError) as e:
+            problems.append(f"代码规范检查执行失败（视为未通过）: {e}")
+    # 脚本不存在 = code-quality 模块未启用，静默跳过（可插拔：关掉的模块不该打扰）
 
     if not problems:
-        print("[harness] ✅ 检查通过（harness 已同步 + 无占位实现）")
+        print("[harness] ✅ 检查通过（harness 已同步 + 无占位实现 + 代码规范）")
         return 0
 
     print("\n" + "╔" + "═" * 62 + "╗")

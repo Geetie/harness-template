@@ -42,16 +42,50 @@ VERSION = "1.0.0"
 
 # 忽略目录（与 no_placeholder_guard 保持一致）
 IGNORE_DIRS = {
-    "node_modules", "bower_components", "__pycache__", ".pytest_cache",
-    ".mypy_cache", ".ruff_cache", ".venv", "venv", "env",
-    "dist", "build", "out", "target", "bin", "obj",
-    "coverage", "htmlcov", ".next", ".nuxt", ".svelte-kit",
-    ".git", ".idea", ".vscode", "site-packages", "vendor", "third_party",
+    "node_modules",
+    "bower_components",
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".venv",
+    "venv",
+    "env",
+    "dist",
+    "build",
+    "out",
+    "target",
+    "bin",
+    "obj",
+    "coverage",
+    "htmlcov",
+    ".next",
+    ".nuxt",
+    ".svelte-kit",
+    ".git",
+    ".idea",
+    ".vscode",
+    "site-packages",
+    "vendor",
+    "third_party",
 }
 
 CODE_EXTENSIONS = {
-    ".py", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".vue", ".svelte",
-    ".go", ".rs", ".java", ".kt", ".rb", ".php",
+    ".py",
+    ".js",
+    ".jsx",
+    ".mjs",
+    ".cjs",
+    ".ts",
+    ".tsx",
+    ".vue",
+    ".svelte",
+    ".go",
+    ".rs",
+    ".java",
+    ".kt",
+    ".rb",
+    ".php",
 }
 
 # 各语言的 import 语句模式（够用即可，不追求 AST 级精确）
@@ -62,7 +96,7 @@ IMPORT_PATTERNS = [
     re.compile(r"^\s*from\s+([\.\w]+)\s+import", re.MULTILINE),
     re.compile(r"^\s*import\s+([\.\w]+)", re.MULTILINE),
     # Go
-    re.compile(r"^\s*(?:import\s+)?\"([\w\.\-/]+)\"" , re.MULTILINE),
+    re.compile(r"^\s*(?:import\s+)?\"([\w\.\-/]+)\"", re.MULTILINE),
 ]
 
 # 测试文件判定（默认排除，可用 --include-tests 纳入）
@@ -75,13 +109,27 @@ TEST_PATTERNS = [
 
 # 自动探测的入口（按优先级）
 AUTO_ENTRY_CANDIDATES = [
-    "src/main.tsx", "src/main.ts", "src/index.tsx", "src/index.ts",
-    "src/App.tsx", "src/App.ts",
-    "app/main.py", "main.py", "app.py", "src/app.py",
-    "src/main.go", "main.go", "src/main.rs", "src/lib.rs",
-    "index.js", "index.ts", "src/index.js",
-    "app/page.tsx", "app/layout.tsx",
-    "src-tauri/src/main.rs", "cmd/main.go",
+    "src/main.tsx",
+    "src/main.ts",
+    "src/index.tsx",
+    "src/index.ts",
+    "src/App.tsx",
+    "src/App.ts",
+    "app/main.py",
+    "main.py",
+    "app.py",
+    "src/app.py",
+    "src/main.go",
+    "main.go",
+    "src/main.rs",
+    "src/lib.rs",
+    "index.js",
+    "index.ts",
+    "src/index.js",
+    "app/page.tsx",
+    "app/layout.tsx",
+    "src-tauri/src/main.rs",
+    "cmd/main.go",
 ]
 
 
@@ -89,7 +137,7 @@ AUTO_ENTRY_CANDIDATES = [
 class Orphan:
     file: str
     bytes: int
-    reason: str          # 为什么判定为孤儿（显式声明，不静默）
+    reason: str  # 为什么判定为孤儿（显式声明，不静默）
     imported_by: list = field(default_factory=list)  # 反向：谁（本该）引用它
 
 
@@ -112,8 +160,9 @@ def collect_sources(root: str, include_tests: bool, exts: set) -> list[str]:
     """收集代码根下的源文件。"""
     out = []
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames
-                       if d not in IGNORE_DIRS and not d.startswith(".")]
+        dirnames[:] = [
+            d for d in dirnames if d not in IGNORE_DIRS and not d.startswith(".")
+        ]
         for fn in filenames:
             if os.path.splitext(fn)[1].lower() not in exts:
                 continue
@@ -164,8 +213,9 @@ def parse_alias_map(pairs: list[str], root: str) -> list[tuple[str, str]]:
     return out
 
 
-def resolve_spec(spec: str, from_file: str, root: str,
-                 aliases: list[tuple[str, str]], exts: set) -> list[str]:
+def resolve_spec(
+    spec: str, from_file: str, root: str, aliases: list[tuple[str, str]], exts: set
+) -> list[str]:
     """把一个 import 说明符解析成候选文件路径（可能多个，也可能解析不到）。"""
     spec = spec.strip()
     if not spec or spec.startswith("data:") or spec.startswith("http"):
@@ -184,7 +234,9 @@ def resolve_spec(spec: str, from_file: str, root: str,
                 base = target
                 break
             if spec.startswith(prefix + "/"):
-                base = os.path.join(target, spec[len(prefix) + 1:].replace("/", os.sep))
+                base = os.path.join(
+                    target, spec[len(prefix) + 1 :].replace("/", os.sep)
+                )
                 break
         if base is None:
             # 退化为"从根解析"：去 @ 前缀后按相对根处理
@@ -227,8 +279,13 @@ def extract_imports(filepath: str) -> list[str]:
     return specs
 
 
-def analyze(root: str, entries: list[str], sources: list[str],
-            aliases: list[tuple[str, str]], exts: set) -> tuple[set, list]:
+def analyze(
+    root: str,
+    entries: list[str],
+    sources: list[str],
+    aliases: list[tuple[str, str]],
+    exts: set,
+) -> tuple[set, list]:
     """从入口 BFS，返回 (可达文件集合, 未解析的 import 说明符列表)。"""
     source_set = set(os.path.normpath(s) for s in sources)
     reachable: set[str] = set()
@@ -261,17 +318,27 @@ def main(argv: list[str] | None = None) -> int:
         description="集成检查：找出写了但从未被调用的孤儿模块（Wiring Failure 静态嫌疑犯）",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="⚠️ 只能发现『完全没被调用』的模块；"
-               "『注册了不触发』与『写了没人读』必须靠行为探针，见 integration-check.md",
+        "『注册了不触发』与『写了没人读』必须靠行为探针，见 integration-check.md",
     )
     ap.add_argument("root", help="代码根目录")
-    ap.add_argument("--entry", action="append", default=[],
-                    help="主流程入口（文件或目录），可重复；不指定则自动探测")
-    ap.add_argument("--alias", action="append", default=[],
-                    help="路径别名，格式 <前缀>=<目录>，如 @=src；可重复")
-    ap.add_argument("--include-tests", action="store_true",
-                    help="把测试文件也纳入分析（默认排除）")
-    ap.add_argument("--ext", action="append", default=[],
-                    help="额外纳入的扩展名（如 .vue），可重复")
+    ap.add_argument(
+        "--entry",
+        action="append",
+        default=[],
+        help="主流程入口（文件或目录），可重复；不指定则自动探测",
+    )
+    ap.add_argument(
+        "--alias",
+        action="append",
+        default=[],
+        help="路径别名，格式 <前缀>=<目录>，如 @=src；可重复",
+    )
+    ap.add_argument(
+        "--include-tests", action="store_true", help="把测试文件也纳入分析（默认排除）"
+    )
+    ap.add_argument(
+        "--ext", action="append", default=[], help="额外纳入的扩展名（如 .vue），可重复"
+    )
     ap.add_argument("--json", action="store_true", help="输出 JSON")
     ap.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
     args = ap.parse_args(argv)
@@ -281,18 +348,25 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[!] 代码根目录不存在: {root}", file=sys.stderr)
         return 2
 
-    exts = set(CODE_EXTENSIONS) | {e if e.startswith(".") else "." + e for e in args.ext}
+    exts = set(CODE_EXTENSIONS) | {
+        e if e.startswith(".") else "." + e for e in args.ext
+    }
 
     sources = collect_sources(root, args.include_tests, exts)
     if not sources:
-        print("[!] 未扫描到任何源文件 —— 这本身就是异常，请检查 root / 扩展名配置。",
-              file=sys.stderr)
+        print(
+            "[!] 未扫描到任何源文件 —— 这本身就是异常，请检查 root / 扩展名配置。",
+            file=sys.stderr,
+        )
         return 2
 
     entries, entry_note = find_entries(root, args.entry or None)
     if not entries:
-        print(f"[!] 找不到主流程入口（{entry_note}）。"
-              f"没有入口就无法判断可达性，请用 --entry 指定。", file=sys.stderr)
+        print(
+            f"[!] 找不到主流程入口（{entry_note}）。"
+            f"没有入口就无法判断可达性，请用 --entry 指定。",
+            file=sys.stderr,
+        )
         return 2
 
     aliases = parse_alias_map(args.alias, root)
@@ -309,11 +383,13 @@ def main(argv: list[str] | None = None) -> int:
         except OSError:
             size = -1
         rel = os.path.relpath(p, root).replace("\\", "/")
-        orphans.append(Orphan(
-            file=rel,
-            bytes=size,
-            reason="从主流程入口出发的引用可达性分析未覆盖到该文件",
-        ))
+        orphans.append(
+            Orphan(
+                file=rel,
+                bytes=size,
+                reason="从主流程入口出发的引用可达性分析未覆盖到该文件",
+            )
+        )
 
     warnings = []
     if unresolved:
@@ -322,7 +398,9 @@ def main(argv: list[str] | None = None) -> int:
             f"（可能是第三方包、动态导入或别名未配置）→ 相关模块可能被误判为孤儿"
         )
     if not args.include_tests:
-        warnings.append("测试文件默认排除；若模块只被测试引用，本工具仍会判为孤儿（这通常是真问题）")
+        warnings.append(
+            "测试文件默认排除；若模块只被测试引用，本工具仍会判为孤儿（这通常是真问题）"
+        )
 
     result = Result(
         root=root.replace("\\", "/"),
@@ -336,16 +414,25 @@ def main(argv: list[str] | None = None) -> int:
     exit_code = 1 if orphans else 0
 
     if args.json:
-        print(json.dumps(
-            {**asdict(result), "entry_source": entry_note,
-             "unresolved_count": len(unresolved), "exit_code": exit_code},
-            ensure_ascii=False, indent=2,
-        ))
+        print(
+            json.dumps(
+                {
+                    **asdict(result),
+                    "entry_source": entry_note,
+                    "unresolved_count": len(unresolved),
+                    "exit_code": exit_code,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
     else:
         print(f"\n代码根: {result.root}")
         print(f"入口来源: {entry_note}")
         print(f"入口: {', '.join(result.entries) if result.entries else '(无)'}")
-        print(f"扫描源文件: {result.scanned}   可达: {result.reachable}   孤儿: {len(orphans)}\n")
+        print(
+            f"扫描源文件: {result.scanned}   可达: {result.reachable}   孤儿: {len(orphans)}\n"
+        )
 
         if warnings:
             print("--- 说明 / 局限 ---")
@@ -369,7 +456,9 @@ def main(argv: list[str] | None = None) -> int:
             print("  3) 确实是入口/动态加载 → 用 --entry 或 --alias 补登记")
         else:
             print("✅ 通过：静态可达性分析未发现孤儿模块。")
-            print("   注意：这不等于集成没问题 —— 还需跑行为探针（write-read-reload / 让缺失层响亮失败 / 输出是否真的在变）。")
+            print(
+                "   注意：这不等于集成没问题 —— 还需跑行为探针（write-read-reload / 让缺失层响亮失败 / 输出是否真的在变）。"
+            )
 
         print(f"\n退出码: {exit_code}" + ("（阻断交付）" if exit_code else "（放行）"))
 
