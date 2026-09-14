@@ -141,6 +141,10 @@ def substitute(root: str, mapping: dict) -> tuple[int, dict]:
             def repl(m):
                 nonlocal replaced
                 key = m.group(1)
+                # {{XXX}} 是"元语法"——文档里用它表示"占位符长什么样"，
+                # 不是待填项。漏掉这层过滤会让待填清单混进噪音。
+                if re.fullmatch(r"X+", key):
+                    return m.group(0)
                 if key in mapping:
                     replaced += 1
                     return mapping[key]

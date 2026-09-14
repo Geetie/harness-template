@@ -111,14 +111,24 @@
 ## 3. 季度修剪清单
 
 > **stale rules 比 missing rules 更有害** —— 过期规则会让 Agent 做错事，且你不知道它在遵循过期规则。
+> **先跑工具，再靠人眼**：能自动检测的不要人审（人眼审不出漂移）。对照 `.harness/memory/harness-antipatterns.md`（12 条实测反模式）。
 
-- [ ] 根 `AGENTS.md`：删掉不再适用的铁律；总长是否仍 ≤150 行
+```bash
+python scripts/state_health.py    # 体积/行数/条目超限、第二套状态（AP-01/02/04）
+python scripts/harness_lint.py    # 漂移：死链/绝对路径/基线/注册表/过期/清单（AP-08~12）
+```
+
+- [ ] 跑上面两条，处理全部 ERROR
+- [ ] 根 `AGENTS.md`：删掉不再适用的铁律；总长是否仍 ≤150 行（AP-04）
+- [ ] 对比「元规范行数 vs 宪法行数」——元规范不该比宪法还长（AP-05）
 - [ ] 模块 `AGENTS.md`：删除已废弃目录的；核对"关键文件"是否仍存在
 - [ ] `memory/lessons.md`：合并重复条目；删掉已不适用的（框架升级后失效的坑）
 - [ ] `state/feature_list.json`：核对 `completed` 条目的 evidence 路径是否仍存在
-- [ ] `routing/ROUTER.md`：能力卡是否都还有用；注册表与磁盘文件是否一致
+- [ ] `routing/ROUTER.md`：能力卡是否都还有用；注册表与磁盘文件是否一致（L004）
 - [ ] `delivery/acceptance.md`：项目级 DoD 是否还符合当前阶段
-- [ ] `state/progress.md`：§10 变更日志是否过长（过长则归档历史到 `memory/`）
+- [ ] `state/progress.md`：§10 变更日志是否过长（过长则归档）
+- [ ] 扫描"已废止规则表"是否还留在宪法里（AP-07）——它该在 memory 或归档
+- [ ] 检查空洞件与模糊标注（AP-12）：0 字节文件、"部分有效"这类状态词
 
 ---
 

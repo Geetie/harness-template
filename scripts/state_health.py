@@ -115,7 +115,9 @@ def check_files(root: str, limits: dict) -> tuple[list[Finding], dict]:
 
         size = os.path.getsize(path)
         content = read_text(path) or ""
-        lines = content.count("\n") + 1
+        # 用 splitlines 而不是 count("\n")+1：后者会把文件末尾的换行多算成一行，
+        # 导致"编辑器显示 150 行"与"工具报 151 行"不一致（实测踩到）。
+        lines = len(content.splitlines())
         metrics[name] = {
             "exists": True,
             "path": os.path.relpath(path, root).replace("\\", "/"),

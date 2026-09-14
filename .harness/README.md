@@ -51,7 +51,8 @@ AI 辅助开发最常见的失败是——计划跑完了，交出来却是一�
 ├── state/                   # 状态三件（实例）
 ├── memory/
 │   ├── lessons.md           # 通用坑表（hook 强制必更）
-│   └── failure-modes.md     # ★ 交付失败模式库
+│   ├── failure-modes.md     # ★ 交付失败模式库（幽灵订阅/空执行/伪造输出/单调化）
+│   └── harness-antipatterns.md  # ★ harness 自身反模式库（12 条，含实测证据与检测规则）
 ├── delivery/                # ⑥ 交付层
 │   ├── README.md            #    交付铁律总纲
 │   ├── DoD-TEMPLATE.md      #    Task DoD 模板

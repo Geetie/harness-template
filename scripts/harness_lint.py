@@ -104,6 +104,15 @@ READ_LIST_ITEM = re.compile(r"^\s*(?:\d+[.、)]|[-*])\s+\S")
 # ── L007 占位符 ──
 PLACEHOLDER = re.compile(r"\{\{([A-Z0-9_]+)\}\}")
 
+# ── 行内豁免 ──
+# 有些文档**故意**引用历史路径作为证据（如反模式库举证"某项目曾硬编码 E:\X"），
+# 那不是"供使用的硬编码路径"，不该报。用法：在该行加 `lint-ignore`。
+LINT_IGNORE = "lint-ignore"
+
+
+def is_ignored(line: str) -> bool:
+    return LINT_IGNORE in line
+
 ALL_CHECKS = ["L001", "L002", "L003", "L004", "L005", "L006", "L007"]
 
 
@@ -188,8 +197,12 @@ def build_name_index(root: str) -> set[str]:
     for dp, dn, fn in os.walk(root):
         dn[:] = [d for d in dn if d not in SKIP_DIRS and not d.startswith(".") or d == ".harness"]
         for f in fn:
-            idx.add(f)
-            idx.add(os.path.relpath(os.path.join(dp, f), root).replace("\\", "/"))
+            rel_p = os.path.relpath(os.path.join(dp, f), root).replace("\\", "/")
+            for v in (f, rel_p):
+                idx.add(v)
+                # 小写兜底：Windows 文件名不区分大小写，文档里手写的大小写偏差
+                # （如 state-protocol.md vs STATE-PROTOCOL.md）不该报成死链
+                idx.add(v.lower())
     return idx
 
 
@@ -201,6 +214,8 @@ def check_l001(root: str, docs: list[str], name_index: set[str]) -> list[Finding
         if not content:
             continue
         for i, ln in enumerate(content.splitlines(), 1):
+            if is_ignored(ln):
+                continue
             for pat in (BACKTICK_PATH, MD_LINK):
                 for m in pat.finditer(ln):
                     ref = m.group(1)
@@ -216,7 +231,9 @@ def check_l001(root: str, docs: list[str], name_index: set[str]) -> list[Finding
                         continue
                     if os.path.exists(os.path.join(os.path.dirname(d), ref)):
                         continue
-                    if os.path.basename(norm) in name_index or norm in name_index:
+                    base = os.path.basename(norm)
+                    if (base in name_index or base.lower() in name_index
+                            or norm in name_index or norm.lower() in name_index):
                         continue
                     out.append(Finding(
                         "L001", "warn", rel(root, d), i,
@@ -239,6 +256,8 @@ def check_l002(root: str, docs: list[str], name_index: set[str]) -> list[Finding
         if not content:
             continue
         for i, ln in enumerate(content.splitlines(), 1):
+            if is_ignored(ln):
+                continue
             for pat in (ABS_WIN, ABS_POSIX_HOME):
                 m = pat.search(ln)
                 if not m:
@@ -429,6 +448,8 @@ def check_l007(root: str, docs: list[str]) -> list[Finding]:
             continue
         keys: dict[str, int] = {}
         for i, ln in enumerate(content.splitlines(), 1):
+            if is_ignored(ln):
+                continue
             for m in PLACEHOLDER.finditer(ln):
                 keys.setdefault(m.group(1), i)
         if keys:
