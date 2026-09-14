@@ -1,0 +1,15 @@
+# 本仓库是 harness 模板仓库（不是模板生成出来的项目）
+
+存在此文件 = `new_project.py` 不复制它，`pre-commit` 用它来切换强制清单。
+
+**为什么需要这个标记**：
+模板仓库自身也是 git 仓库、也跑 `.githooks/pre-commit`，但它的
+`.harness/state/progress.md` 与 `.harness/memory/lessons.md` 是**要被复制出去的脚手架**，
+必须保持未填写的原样 —— 一旦写进本仓库自己的变更日志，每个新生成的项目都会带着
+一段不属于它的历史。
+
+**因此**：模板仓库的强制必更项改为 `.harness/MAINTENANCE.md`（模板自身的变更史记在其中）。
+详见 `.githooks/pre-commit.py` 的 `MANDATORY_ON_CODE_TEMPLATE`。
+
+**注意**：此文件必须被 `scripts/new_project.py` 排除（已在 `EXCLUDE_FILES` 中声明），
+否则生成的项目会误以为自己也是模板仓库。

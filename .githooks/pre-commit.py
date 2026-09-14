@@ -26,6 +26,16 @@ MANDATORY_ON_CODE = [
     ".harness/memory/lessons.md",
 ]
 
+# 模板仓库特殊模式：本仓库是**被复制出去的源头**，其 state/lessons 文件必须保持
+# 未填写的脚手架原样（否则新项目一生成就带着本仓库的历史日志）。
+# 因此在这里改成强制更新 MAINTENANCE.md —— 模板自身的变更史记在维护规范里。
+#
+# 识别方式：存在 .harness/TEMPLATE-REPO 标记文件（只在本仓库有，new_project 不复制它）。
+TEMPLATE_MARKER = ".harness/TEMPLATE-REPO"
+MANDATORY_ON_CODE_TEMPLATE = [
+    ".harness/MAINTENANCE.md",
+]
+
 # 判定为"非代码"的前缀/后缀（这些变更不触发强制）
 NON_CODE_PREFIXES = (".harness/", "docs/", ".githooks/", "scripts/")
 NON_CODE_SUFFIXES = (".md", ".lock", "-lock.json")
@@ -88,12 +98,21 @@ def main() -> int:
     problems: list[str] = []
 
     # ── 检查 1：harness 强制必更 ──
-    missing = [m for m in MANDATORY_ON_CODE if m not in staged]
+    # 模板仓库走特殊清单（见 MANDATORY_ON_CODE_TEMPLATE 的说明），
+    # 否则会逼着模板去污染它自己的脚手架文件。
+    if os.path.isfile(os.path.join(root, TEMPLATE_MARKER)):
+        mandatory = MANDATORY_ON_CODE_TEMPLATE
+        hint = "（模板仓库模式：本次变更请在 MAINTENANCE.md §变更史记一行）"
+    else:
+        mandatory = MANDATORY_ON_CODE
+        hint = "（progress.md 追加一行变更日志；若本次踩了新坑则更新 lessons.md）"
+
+    missing = [m for m in mandatory if m not in staged]
     if missing:
         problems.append(
             "harness 未同步：以下文件必须与代码在同一个 commit 中更新\n"
             + "".join(f"      · {m}\n" for m in missing)
-            + "      （progress.md 追加一行变更日志；若本次踩了新坑则更新 lessons.md）"
+            + "      " + hint
         )
 
     # ── 检查 2：反占位符 ──

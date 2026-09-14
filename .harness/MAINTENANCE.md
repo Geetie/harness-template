@@ -137,3 +137,29 @@ python scripts/harness_lint.py    # 漂移：死链/绝对路径/基线/注册�
 1. **新治理文档一律进 `.harness/`**，不在根目录或 `docs/` 其他位置新增散件（否则归口失效）
 2. **新建即注册**：在相应索引（本文件、`ROUTER.md`、`.harness/README.md` §5）加一行
 3. **能写成 skill 的流程不要写成规则**：流程 → `skills/`；只有"红线"才进 `AGENTS.md`
+
+---
+
+## 5. 模板仓库维护史（仅本仓库）
+
+> **本仓库是模板源头，不是模板生成出来的项目。** 因此强制必更项不是
+> `state/progress.md`（它要保持脚手架原样），而是**本文件的这一节**。
+> 机制见 `.githooks/pre-commit.py` 的 `MANDATORY_ON_CODE_TEMPLATE`，
+> 由 `.harness/TEMPLATE-REPO` 标记文件触发。
+
+| 日期 | 轮次 | 内容 | 验证 |
+|---|---|---|---|
+| 2026-09-14 | R1 | 状态层生命周期：体积上限 + 归档 + `state_health.py` | lint 通过 |
+| 2026-09-14 | R2 | 一致性检查 `harness_lint.py`（L001-L007） | 0 ERROR |
+| 2026-09-14 | R3 | 反模式库 `harness-antipatterns.md`（12 条）+ 工具收尾 | 通过 |
+| 2026-09-14 | R4 | **决策演进层**：决策三件套（台账/指针/失效水位）+ L008-L011 + 可插拔架构（11 模块/3 档位）+ 单一真相源 `module_manifest.py` + GLOBAL-LESSONS 57 条 | lint 0E/0W · init 30/30 · 死链 33→0 |
+| 2026-09-14 | R5 | **自审修复**（4 处）：①移除臆想路径 `.githooks/hooks.json` ②L004 加模块关闭豁免 ③L010 跳过围栏代码块（`iter_lines_skip_fence`）④`read()` 失败留痕 + `--explain-skip`。新增教训 S14/P23/P24。新增模板仓库模式（`TEMPLATE-REPO` 标记） | 三档位 lint 全 0E · init 19/27/31 · L010 双向对照 3/3 PASS |
+
+### 模板仓库特有的两条纪律
+
+1. **脚手架文件保持未填写**：`state/progress.md`、`memory/lessons.md`、
+   `planning/SPEC-TEMPLATE.md` 等随项目生成的文件，在本仓库里**永远不填**。
+   需要记录模板自身的历史 → 记在上表。
+2. **验证必须覆盖"生成出来的项目"**：本仓库自己 lint 通过 ≠ 生成的骨架能用。
+   每次改动都要跑 `new_project.py --preset {minimal,standard,full}` 并在产物里
+   各跑一遍 `init.py` / `harness_lint.py`（这是可插拔的真实验收面）。

@@ -18,6 +18,12 @@ init.py — 环境健康检查
 配置 .harness/config.json（可选，不存在则跳过第 4 项）
 ------------------------------------------------------
 {
+  "modules": {
+    "instructions": true, "state": true, "verification": true,
+    "memory": true, "delivery": true, "routing": false,
+    "decisions": true, "planning": true,
+    "placeholder-guard": true, "integration-check": false
+  },
   "code_root": "src",
   "commands": {
     "typecheck": "npm run typecheck",
@@ -27,10 +33,18 @@ init.py — 环境健康检查
   "baseline": { "test": "0 failed" }
 }
 
+模块可插拔
+----------
+modules 里某项为 false → 该模块负责的检查被跳过，并**打印 [SKIP] 原因**。
+未出现的模块视为 true（向后兼容）。
+依赖关系见 .harness/MODULES.md。
+
 用法
 ----
     python scripts/init.py                 # 全部检查
     python scripts/init.py --skip-commands # 只查结构与状态（快）
+    python scripts/init.py --modules       # 打印当前模块开关表
+    python scripts/init.py --preset full   # 按档位检查（不写配置，仅本次生效）
     python scripts/init.py --json
 
 退出码
@@ -48,34 +62,61 @@ import os
 import subprocess
 import sys
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 
-# 六层必需文件（相对仓库根）
-REQUIRED_FILES = [
-    ("①指令层", "AGENTS.md"),
-    ("⑥交付层", ".harness/delivery/README.md"),
-    ("⑥交付层", ".harness/delivery/DoD-TEMPLATE.md"),
-    ("⑥交付层", ".harness/delivery/acceptance.md"),
-    ("⑥交付层", ".harness/delivery/hardening-checklist.md"),
-    ("②状态层", ".harness/state/progress.md"),
-    ("②状态层", ".harness/state/feature_list.json"),
-    ("②状态层", ".harness/state/session-handoff.md"),
-    ("④记忆层", ".harness/memory/lessons.md"),
-    ("④记忆层", ".harness/memory/failure-modes.md"),
-    ("⑤技能层", ".harness/routing/ROUTER.md"),
-    ("①计划", ".harness/planning/CONSTITUTION.md"),
-    ("①计划", ".harness/planning/SPEC-TEMPLATE.md"),
-    ("总览", ".harness/README.md"),
-    ("维护", ".harness/MAINTENANCE.md"),
-]
+# ── 模块定义（可插拔）──
+# 为什么需要：模板此前是焊死的六层，小项目被迫背全套餐。
+# 现在每个模块可独立启停，缺失时**显式降级、不报错**。
+# 模块归属只从共享清单读（单一真相源），三个脚本必须认识同一份模块表。
+# 详见 .harness/MODULES.md 与 scripts/module_manifest.py
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from module_manifest import (  # noqa: E402
+    PRESETS,
+    always_files,
+    module_deps,
+    module_layers,
+    module_required,
+    resolve_modules as _resolve_from_manifest,
+)
 
-REQUIRED_SCRIPTS = [
-    "scripts/no_placeholder_guard.py",
-    "scripts/check_integration.py",
-    "scripts/state_health.py",
-    "scripts/harness_lint.py",
-    "scripts/init.py",
-]
+MODULE_DEPS = module_deps()
+MODULE_LAYERS = module_layers()
+_MODULE_REQUIRED = module_required()
+
+# 模块 → 它负责的必需文件（关闭该模块则这些文件不检查）
+MODULE_FILES: dict[str, list[tuple[str, str]]] = {
+    mod: [(MODULE_LAYERS[mod], f) for f in files]
+    for mod, files in _MODULE_REQUIRED.items()
+}
+
+# 模块 → 它负责的脚本（单独列出只为在报告中归组；实际文件来自 REQUIRED）
+MODULE_SCRIPTS: dict[str, list[str]] = {
+    "verification": ["scripts/init.py", "scripts/harness_lint.py"],
+    "state": ["scripts/state_health.py"],
+    "placeholder-guard": ["scripts/no_placeholder_guard.py"],
+    "integration-check": ["scripts/check_integration.py"],
+}
+
+# 总是检查的（不属于任何可关模块的总览文件）
+ALWAYS_FILES = always_files()
+
+
+def resolve_modules(cfg: dict | None) -> tuple[dict[str, bool], list[str]]:
+    """从 config 解析模块开关，隐式补齐依赖。
+
+    返回 (开关表, 告警列表)。
+    **依赖自动补齐但必须告警** —— 静默补齐会让配置与实际行为不一致。
+    实际逻辑委托给 module_manifest.resolve_modules（单一真相源），
+    这里只负责把 config 形态转成它要的入参。
+    """
+    explicit = (cfg or {}).get("modules")
+    if explicit is None:
+        # 老项目无 modules 字段 → 全开（向后兼容）
+        return {m: True for m in MODULE_DEPS}, []
+    off = {m for m in MODULE_DEPS if not bool(explicit.get(m, True))}
+    on, warns = _resolve_from_manifest(enabled_off=off)
+    return on, warns
+
 
 # 状态文件体积上限（与 state_health.py 保持一致；超限 → 状态文件正在变成 Agent 读不完的档案）
 STATE_LIMITS = {
@@ -84,6 +125,39 @@ STATE_LIMITS = {
     ".harness/state/session-handoff.md": (16 * 1024, 200),
     ".harness/state/feature_list.json": (64 * 1024, None),
 }
+
+
+def build_required(root: str, modules: dict[str, bool]) -> tuple[list, list[str]]:
+    """按模块开关生成必需文件清单。
+
+    返回 ([(层, 路径)], [跳过说明])。
+    **每个被跳过的模块都要留下可打印的原因** —— 静默跳过等于假装检查过。
+
+    去重：MODULE_FILES（来自 module_manifest.MODULE_REQUIRED）与 MODULE_SCRIPTS
+    会有交集（脚本既在模块必需清单里、又在脚本分组里），叠加后同一文件会被检查两次，
+    输出里出现重复的 ✅ 行（真实事故）。按路径去重，保持首次出现的顺序。
+    """
+    files: list[tuple[str, str]] = list(ALWAYS_FILES)
+    seen: set[str] = {rel for _, rel in files}
+    skipped: list[str] = []
+
+    for mod, on in modules.items():
+        entries = list(MODULE_FILES.get(mod, [])) + \
+            [(MODULE_LAYERS.get(mod, "③验证层"), s)
+             for s in MODULE_SCRIPTS.get(mod, [])]
+        entries = [(layer, rel) for layer, rel in entries if rel not in seen]
+        if not entries:
+            continue
+        if on:
+            for layer, rel in entries:
+                if rel in seen:
+                    continue
+                seen.add(rel)
+                files.append((layer, rel))
+        else:
+            skipped.append(f"{mod}（{len(entries)} 项检查）")
+
+    return files, skipped
 
 
 def find_repo_root() -> str:
@@ -103,17 +177,13 @@ def load_config(root: str) -> tuple[dict | None, str | None]:
         return None, f".harness/config.json 不是合法 JSON: {e}"
 
 
-def check_structure(root: str) -> list[tuple[str, str, bool, str]]:
+def check_structure(root: str, required: list) -> list[tuple[str, str, bool, str]]:
     """返回 [(层, 文件, 是否存在, 说明)]"""
     out = []
-    for layer, rel in REQUIRED_FILES:
+    for layer, rel in required:
         p = os.path.join(root, rel)
         ok = os.path.isfile(p)
         out.append((layer, rel, ok, "" if ok else "缺失"))
-    for rel in REQUIRED_SCRIPTS:
-        p = os.path.join(root, rel)
-        ok = os.path.isfile(p)
-        out.append(("③验证层", rel, ok, "" if ok else "缺失"))
     return out
 
 
@@ -208,6 +278,9 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="harness 环境健康检查")
     ap.add_argument("--root", default=None, help="仓库根（默认自动推断）")
     ap.add_argument("--skip-commands", action="store_true", help="跳过质量命令（快检）")
+    ap.add_argument("--modules", action="store_true", help="只打印当前模块开关表")
+    ap.add_argument("--preset", default=None, choices=sorted(PRESETS),
+                    help="按档位覆盖模块开关（仅本次生效，不写配置）")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
     args = ap.parse_args(argv)
@@ -222,10 +295,38 @@ def main(argv=None) -> int:
         print(f"[!] {cfg_err}", file=sys.stderr)
         return 2
 
+    if args.preset:
+        # 档位覆盖：显式给出全部模块的开关，覆盖配置
+        cfg = dict(cfg or {})
+        cfg["modules"] = {m: (m in PRESETS[args.preset]) for m in MODULE_DEPS}
+
+    modules, mod_warnings = resolve_modules(cfg)
+
+    if args.modules:
+        print(f"\n模块开关表 — {root}\n" + "=" * 50)
+        for m in sorted(MODULE_DEPS):
+            on = modules.get(m, True)
+            deps = ",".join(MODULE_DEPS[m]) or "—"
+            print(f"  {'✅ 开' if on else '❌ 关'}  {m:<20} 依赖: {deps}")
+        enabled = sum(1 for v in modules.values() if v)
+        print(f"\n  {enabled}/{len(modules)} 个模块启用")
+        print("  详见 .harness/MODULES.md")
+        return 0
+
+    required, skipped = build_required(root, modules)
+    for w in mod_warnings:
+        print(f"[!] 模块依赖: {w}", file=sys.stderr)
+    for s in skipped:
+        # 显式声明跳过原因（铁律：静默跳过 = 假装检查过）
+        print(f"[SKIP] 模块未启用，跳过检查: {s}", file=sys.stderr)
+
     results = []
-    results += [(c, n, ok, d) for (c, n, ok, d) in check_structure(root)]
-    results += [( "②状态层", n, ok, d) for (n, ok, d) in check_state(root)]
-    results += [("②状态层", n, ok, d) for (n, ok, d) in check_state_limits(root)]
+    results += [(c, n, ok, d) for (c, n, ok, d) in check_structure(root, required)]
+    if modules.get("state", True):
+        results += [("②状态层", n, ok, d) for (n, ok, d) in check_state(root)]
+        results += [("②状态层", n, ok, d) for (n, ok, d) in check_state_limits(root)]
+    else:
+        print("[SKIP] state 模块未启用，跳过状态文件完整性与体积检查", file=sys.stderr)
     results += [("③验证层", n, ok, d) for (n, ok, d) in check_hooks(root)]
     if not args.skip_commands:
         results += [("③验证层", n, ok, d) for (n, ok, d) in run_commands(root, cfg or {})]

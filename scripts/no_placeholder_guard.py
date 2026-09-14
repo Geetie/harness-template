@@ -42,6 +42,19 @@ from typing import Iterable, Iterator
 
 VERSION = "1.0.0"
 
+
+def _norm(path: str) -> str:
+    """规范化路径：正斜杠 + 去掉前导 `./`。
+
+    ⚠️ 不要用 `path.lstrip("./")` —— lstrip 的参数是**字符集**不是前缀，
+    它会连着吃掉 `.harness` 的前导点，使豁免清单里的点目录路径永远匹配不上
+    （真实事故，与 module_manifest.norm_rel 同一根因）。
+    """
+    p = path.replace("\\", "/")
+    while p.startswith("./"):
+        p = p[2:]
+    return p
+
 # --------------------------------------------------------------------------
 # 默认忽略的目录 / 文件
 # --------------------------------------------------------------------------
@@ -170,8 +183,36 @@ RULES: list[Rule] = [
 # 关键：scan_file 若只逐行扫描，这些规则永远命中不了（except 在一行、pass 在下一行），
 # 而「吞掉异常」恰恰是最值得拦的占位实现之一。因此它们必须走全文匹配通道。
 MULTILINE_RULE_IDS = {"shallow-catch", "log-and-rethrow"}
+
+# ── 文档类文件只跑「模板占位符」这一族规则 ──
+# 为什么：`.md` 里出现 TODO / NotImplementedError / 空函数体 / catch-pass ，
+# 绝大多数情况是**在讲解这些反模式**，而不是真犯了它们。
+# 实证：拿本仓库自检，AGENTS.md 写「不写 TODO / FIXME / NotImplementedError」这条规则本身，
+# 被判 3 条 ERROR；README.md 讲「没有 DoD 会产出 Incomplete Implementation」又被判违规。
+# 一个防占位符的系统被自己的门禁判违规 14 次 —— 说明扫描范围设计错了，不是文档写错了。
+# 文档该被检查的只有一件事：**模板占位符填没填**（{{XXX}}）。
+CODE_ONLY_RULES = {
+    "todo-marker", "todo-marker-zh", "not-implemented",
+    "stub-return", "stub-variable", "stub-return-dict",
+    "empty-body", "shallow-catch", "log-and-rethrow",
+    "hardcoded-fallback",
+}
+DOC_EXTENSIONS = {".md", ".mdx", ".txt", ".rst"}
+
 MULTILINE_RULES = [r for r in RULES if r.rid in MULTILINE_RULE_IDS]
 LINE_RULES = [r for r in RULES if r.rid not in MULTILINE_RULE_IDS]
+
+
+def is_doc_file(path: str) -> bool:
+    """文档类文件：只跑模板占位符检查，不跑代码语义检查。"""
+    return os.path.splitext(path)[1].lower() in DOC_EXTENSIONS
+
+
+def rules_for(path: str) -> list[Rule]:
+    """按文件类型选择适用规则（文档只跑文档适用的那部分）。"""
+    if is_doc_file(path):
+        return [r for r in RULES if r.rid not in CODE_ONLY_RULES]
+    return list(RULES)
 
 
 # --------------------------------------------------------------------------
@@ -230,7 +271,7 @@ def load_allowlist(path: str | None) -> set[tuple[str, int]]:
             line = raw.split("#", 1)[0].strip()
             if not line:
                 continue
-            line = line.replace("\\", "/").lstrip("./")
+            line = _norm(line)
             if ":" in line and line.rsplit(":", 1)[1].isdigit():
                 p, ln = line.rsplit(":", 1)
                 allowed.add((p, int(ln)))
@@ -248,11 +289,29 @@ def _path_matches(norm_file: str, pattern: str) -> bool:
 
 
 def is_allowed(allow: set[tuple[str, int]], filepath: str, lineno: int) -> bool:
-    norm = filepath.replace("\\", "/").lstrip("./")
+    norm = _norm(filepath)
     for p, ln in allow:
         if not _path_matches(norm, p):
             continue
         if ln == -1 or ln == lineno:
+            return True
+    return False
+
+
+# ── 行内豁免指令 ──
+# 用途：任何项目都会有"**在描述规则本身**"的地方 —— 规范文档、门禁脚本的注释、
+# 解释"什么算占位实现"的说明。这些文字会被规则打中，但它们不是违规。
+# 用法：在所在行（或紧邻的上一行）加 `guard:allow`
+#     # guard:allow —— 本行在解释规则本身，不是占位实现
+# 为什么用显式指令而不是自动识别：自动识别"这句话是不是在讲规则"不可靠
+# （自然语言判断），而显式指令零误判、可审计、且让作者主动思考一次。
+INLINE_ALLOW = re.compile(r"guard\s*:\s*allow", re.I)
+
+
+def _inline_allowed(lines: list[str], lineno: int) -> bool:
+    """该行是否带行内豁免指令（本行或紧邻上一行）。"""
+    for cand in (lineno, lineno - 1):
+        if 1 <= cand <= len(lines) and INLINE_ALLOW.search(lines[cand - 1]):
             return True
     return False
 
@@ -267,6 +326,8 @@ def scan_file(filepath: str, allow: set[tuple[str, int]]) -> list[Finding]:
 
     同一 (行号, 规则) 只报一次；被跨行规则覆盖的行不再重复报 empty-body，
     避免同一处 `except: pass` 被拆成两条重复告警。
+
+    豁免来源：① allowlist 文件（文件/行级） ② 行内 `guard:allow` 指令。
     """
     try:
         with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
@@ -285,6 +346,8 @@ def scan_file(filepath: str, allow: set[tuple[str, int]]) -> list[Finding]:
         key = (lineno, rule.rid)
         if key in seen:
             return
+        if _inline_allowed(lines, lineno):       # 行内 `guard:allow` 指令
+            return
         seen.add(key)
         findings.append(Finding(
             file=norm_path,
@@ -296,7 +359,11 @@ def scan_file(filepath: str, allow: set[tuple[str, int]]) -> list[Finding]:
         ))
 
     # --- 阶段 1：跨行规则（全文匹配）---
-    for rule in MULTILINE_RULES:
+    # 按文件类型取规则：文档只跑模板占位符族（详见 CODE_ONLY_RULES 上方注释）
+    applicable = rules_for(filepath)
+    ml_rules = [r for r in applicable if r.rid in MULTILINE_RULE_IDS]
+    ln_rules = [r for r in applicable if r.rid not in MULTILINE_RULE_IDS]
+    for rule in ml_rules:
         for m in rule.pattern.finditer(content):
             start_line = content.count("\n", 0, m.start()) + 1
             end_line = content.count("\n", 0, m.end()) + 1
@@ -311,7 +378,7 @@ def scan_file(filepath: str, allow: set[tuple[str, int]]) -> list[Finding]:
         if is_allowed(allow, filepath, i):
             continue
         prev_line = lines[i - 2] if i >= 2 else ""
-        for rule in LINE_RULES:
+        for rule in ln_rules:
             # `except X: \n pass` 已由 shallow-catch 报告，不用再报 empty-body
             if rule.rid == "empty-body":
                 if i in covered_by_multiline:
