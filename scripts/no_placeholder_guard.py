@@ -194,16 +194,18 @@ RULES: list[Rule] = [
         "中文未完成标记（要求出现在注释中，避免误伤说明性文字）",
     ),
     _r(
-        # 词表口径（实测校准，2026-09-15）：
-        # 原来含独立的 `NotImplemented`，但它是 **Python 内置单例**，
-        # 用于实现比较协议（`__eq__` 返回它让解释器尝试反向比较）——
-        # **完全合法且推荐**。实测 `if x is NotImplemented:` 与
-        # `return NotImplemented` 都被误抓（真误报）。
-        # 去掉该分支不影响抓捕：`NotImplementedError` 由前面的分支覆盖。
+        # 跨语言形态（实测缺口补全）：原规则只认 Python 的 NotImplementedError，
+        # 于是 TS/JS 的 `throw new Error("not implemented")`、
+        # Java 的 `UnsupportedOperationException`、Go 的 `panic("not implemented")`
+        # **全部漏过**（实测：TS/Java 项目里这三类桩代码一处都没抓到）。
+        # 本模板支持 python / next-ts / java 三种栈，规则必须覆盖它们的惯用写法。
         "not-implemented",
         "error",
-        r"\b(NotImplementedError|NotImplementedException)\b",
-        "抛出未实现异常，属于桩实现",
+        r"\b(NotImplementedError|NotImplementedException|UnsupportedOperationException)\b"
+        r"|throw\s+new\s+\w*(?:Error|Exception)\s*\(\s*['\"][^'\"]*"
+        r"(?:not\s+implemented|unimplemented|未实现)"
+        r"|panic\s*\(\s*['\"][^'\"]*(?:not\s+implemented|unimplemented|未实现)",
+        "抛出「未实现」异常/主动 panic，属于桩实现",
     ),
     _r(
         "stub-return",

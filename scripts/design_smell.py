@@ -64,6 +64,22 @@ SKIP_DIRS = {
 }
 PY_EXT = (".py",)
 TS_EXT = (".ts", ".tsx", ".js", ".jsx")
+# 见过但不支持分析的扩展名（用于"明确说明不支持"，而不是静默报空）
+UNSUPPORTED_EXT = {
+    ".java",
+    ".go",
+    ".rs",
+    ".rb",
+    ".cs",
+    ".kt",
+    ".swift",
+    ".php",
+    ".c",
+    ".cc",
+    ".cpp",
+    ".h",
+    ".hpp",
+}
 
 
 class Signal:
@@ -95,13 +111,27 @@ def iter_source_files(paths: list[str]) -> tuple[list[str], list[str]]:
         if not os.path.isdir(p):
             notes.append(f"{p} 不存在 —— 跳过")
             continue
+        unsupported: set[str] = set()
         for dp, dn, fn in os.walk(p):
             dn[:] = [d for d in dn if d not in SKIP_DIRS and not d.startswith(".")]
             for f in fn:
                 if f.endswith(PY_EXT + TS_EXT):
                     files.append(os.path.join(dp, f))
+                else:
+                    _ext = os.path.splitext(f)[1].lower()
+                    if _ext in UNSUPPORTED_EXT:
+                        unsupported.add(_ext)
         if not files:
-            notes.append(f"{p} 下没有找到源码文件")
+            # 不静默：说清"没找到"是因为目录空、还是因为语言不支持（实测踩到：
+            # java 栈的项目跑本工具直接 exit=2，输出只有一句"没有找到源码文件"，
+            # 用户会以为是自己路径写错了 —— 实际是 .java 不在支持列表里）。
+            hint = ""
+            if unsupported:
+                hint = (
+                    f"（本目录含 {'/'.join(sorted(unsupported))}，"
+                    f"当前仅支持 {'/'.join(PY_EXT + TS_EXT)}）"
+                )
+            notes.append(f"{p} 下没有找到可分析的源码文件{hint}")
     return sorted(set(files)), notes
 
 
