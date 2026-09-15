@@ -61,6 +61,9 @@ MODULES: dict[str, dict] = {
             "scripts/init.py",
             "scripts/harness_lint.py",
             "scripts/module_manifest.py",
+            # sync_lib 与 module_manifest 同属"生成/校验基础设施"：
+            # new_project 依赖二者的快照能力，而 new_project 在每个档位都有。
+            "scripts/sync_lib.py",
             "scripts/state_health.py",
             ".harness/hooks/hooks.json",
             # 证据门禁：标 completed 必须给可执行证据（防"只声明完成"）
@@ -181,7 +184,13 @@ MODULES: dict[str, dict] = {
         "layer": "③验证层",
         "owned": [
             "scripts/sync_template.py",
-            "scripts/sync_lib.py",
+            # ⚠️ sync_lib.py **不在这里**（实测崩溃）：它是 new_project.py 的必需依赖
+            # （要用 SYNC.snapshot 写生成基线），而 new_project 在每个档位都有。
+            # 归到 upgrade 会让 minimal/standard 生成的项目里 new_project.py
+            # 一跑就 `ModuleNotFoundError: No module named 'sync_lib'`。
+            # 已移到 verification（与 module_manifest.py 同处，二者都是生成/校验基础设施）。
+            # 注意：**排除优先于包含** —— 文件只要出现在任何"已关闭模块"的 owned 里
+            # 就会被排除，所以不能"两边都放"，必须从这边移走。
         ],
         # 依赖 verification：sync_template 需要 harness_version（版本单一真相源），
         # 而它归 verification 所有。缺了会 ImportError，不是"优雅降级"。
@@ -236,7 +245,12 @@ MODULE_REQUIRED: dict[str, list[str]] = {
     "code-quality": ["scripts/quality.py", ".harness/CODE-QUALITY.md"],
     "design": ["scripts/design_smell.py", ".harness/design/DESIGN-PRINCIPLES.md"],
     "testing": ["scripts/test_runner.py", ".harness/testing/TEST-STRATEGY.md"],
-    "upgrade": ["scripts/sync_template.py", "scripts/sync_lib.py"],
+    # ⚠️ sync_lib.py **不在这里**（实测崩溃）：它是 new_project.py 的必需依赖
+    # （要用 SYNC.snapshot 写生成基线），而 new_project 在基础档就存在。
+    # 归到 upgrade 会让 minimal/standard 生成的项目里 new_project.py
+    # 一跑就 ModuleNotFoundError: No module named 'sync_lib'。
+    # 已移到 verification（与 module_manifest.py 同处，二者都是生成/校验的基础设施）。
+    "upgrade": ["scripts/sync_template.py"],
 }
 
 # 三个预置档位：从少到多。minimal 是"能跑起来的最小可信骨架"。
