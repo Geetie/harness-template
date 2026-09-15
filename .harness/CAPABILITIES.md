@@ -272,6 +272,15 @@ def total():
 | L009 | 决策正文与台账状态不一致 |
 | L010 | 引用了已失效的决策（STALE 水位） |
 | L011 | partial 决策缺 gap / blocked_by（欠账未声明） |
+| **L012** | **清单自洽**（`module_manifest` 不变式：同一文件不被两模块 own / `required ⊆ owned` / 声明路径存在 / owned 非空 / deps 存在） |
+
+**L012 的由来（本会话第十一批）**：上一批发现 `sync_lib.py` 被
+`verification` 与 `upgrade` **同时 own**，因生成侧「排除优先于包含」导致
+minimal/standard 档的 `new_project.py` 一跑就崩。清单自己矛盾却无人检查。
+→ 把不变式变成机器校验。
+
+**验证**：双向 5/5（基线 0 报 / 双归属检出 / `required ⊄ owned` 检出 /
+幽灵路径检出 / 恢复归零）。
 
 **验证状态：L001/L002/L003/L005/L007 已逐条双向对照（修正版方法 17 项）**
 
