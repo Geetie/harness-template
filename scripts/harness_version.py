@@ -20,7 +20,7 @@ from __future__ import annotations
 #   MAJOR — 架构级变更，旧项目无法自动同步（需人工迁移）
 #   MINOR — 新增模块/规则，旧项目可安全同步
 #   PATCH — 修复与措辞，可安全同步
-TEMPLATE_VERSION = "1.10.0"
+TEMPLATE_VERSION = "1.11.0"
 
 # 生成的项目在同步时，若模板 MAJOR 与本项目 MAJOR 不同 → 拒绝自动同步（需人工迁移）
 SYNC_ALLOW_CROSS_MAJOR = False

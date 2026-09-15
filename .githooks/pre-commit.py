@@ -108,10 +108,17 @@ def main() -> int:
     # 否则会逼着模板去污染它自己的脚手架文件。
     if os.path.isfile(os.path.join(root, TEMPLATE_MARKER)):
         mandatory = MANDATORY_ON_CODE_TEMPLATE
-        hint = "（模板仓库模式：本次变更请在 MAINTENANCE.md §变更史记一行）"
+        hint = "（模板仓库模式：本次变更请在 MAINTENANCE.md §变更史 记一行）"
     else:
         mandatory = MANDATORY_ON_CODE
-        hint = "（progress.md 追加一行变更日志；若本次踩了新坑则更新 lessons.md）"
+        # ⚠️ 提示必须与**实际检查**一致（实测踩到：原文案说 lessons.md 是
+        # "若踩了新坑则更新"（条件性），但代码是无条件要求它进 staged ——
+        # 于是"改了 progress 却没改 lessons"会被拦，而用户按提示以为可以不改，
+        # 只会觉得门禁莫名其妙。说明与实现不一致比门禁严格本身更伤信任。）
+        hint = (
+            "（progress.md 追加一行变更日志；lessons.md 也需同 commit 更新 —— "
+            "本次没有新教训就写一行『本次无新教训』，不要留空不改）"
+        )
 
     missing = [m for m in mandatory if m not in staged]
     if missing:
