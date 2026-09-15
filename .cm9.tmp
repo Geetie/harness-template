@@ -1,0 +1,36 @@
+fix: 第七批自查 —— quality 命令解析 + test_runner 间接引用（v1.10.0）
+
+quality.py 修 2 处（都是「明明装了却判未安装」的静默误判）
+--------------------------------------------------
+1. **`first_tool` 把 scope 包名截断**
+   `npx @scope/pkg run` → `os.path.basename("@scope/pkg")` = `pkg`
+   → 探测 `pkg` 失败 → 报"未安装、已跳过"。
+   实测本机已装的包也会被误判。修：`@` 开头的标记原样返回。
+
+2. **`tool_available` 在 Windows 下探测 npx/npm 必失败**
+   Windows 下 `npx` 实为 `npx.cmd`，不经 shell 直接
+   `subprocess.run(["npx", ...])` 会抛 FileNotFoundError → 被捕获后
+   报"探测失败" → **判为未安装**。
+   修：先用 `shutil.which()` 拿真实路径再调。
+   修后错误信息变准确（"eslint 未安装" 而非 "探测失败"）。
+
+test_runner.py 修 1 处（直击最初的痛点）
+--------------------------------------------------
+**选测只做一层映射** —— 在测试文件里直接搜改动模块名。
+于是「测试 → wrapper → base」这种**间接引用**漏选：
+改 base.py 时测试文件里没有 base 字样 → 选不出来 → 降级跑全量。
+（降级是安全方向不会漏测，但正是用户抱怨的"改一点就要跑全量"。）
+
+修法：**反向依赖的传递闭包**（build_reverse_deps + expand_reverse）：
+  · 建图：模块 → 直接 import 它的模块集合
+  · 从改动模块出发做反向可达 → 得到"可能受影响的全部模块名"
+  · 测试引用了闭包内任一模块 → 选中
+
+验证（双向）：
+- 间接引用：改 src/base.py（测试只 import wrapper）→ **正确选中 test_wrapper.py**
+- 直接引用回归：改 src/core.py → 仍正确选中 test_core.py
+- lint 0E/0W · ruff All checks passed
+
+（本批又踩了一次方法论坑：上一步测 test_runner 时我的**解析脚本**写错了
+缩进匹配，误判成"直接引用也漏选"。实测后才发现工具本身是对的 —— 
+这是本会话第 4 次「测试脚本自己出错」。）

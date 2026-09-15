@@ -112,6 +112,51 @@ def is_test_path(rel: str) -> bool:
     return any(h in r for h in TEST_HINTS)
 
 
+IMPORT_RE = re.compile(r"^\s*(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))", re.M)
+
+
+def _stem(path: str) -> str:
+    return os.path.splitext(os.path.basename(path))[0]
+
+
+def build_reverse_deps(files: list[str]) -> dict[str, set[str]]:
+    """建「反向依赖表」：模块名 → 直接 import 它的模块集合。
+
+    为什么需要（实测漏选）：原来只做**一层**映射 —— 在测试文件里直接搜改动模块名。
+    于是"测试 → wrapper → base"这种间接引用会漏：
+    改 base.py 时测试文件里没有 base 字样 → 选不出来 → 降级跑全量
+    （安全但正是用户抱怨的"改一点就跑全量"）。
+    """
+    rev: dict[str, set[str]] = {}
+    for f in files:
+        me = _stem(f)
+        if not me or me == "__init__":
+            continue
+        try:
+            body = open(f, encoding="utf-8", errors="ignore").read()
+        except OSError:
+            continue
+        for m in IMPORT_RE.finditer(body):
+            spec = m.group(1) or m.group(2) or ""
+            for part in spec.split("."):
+                if part and part != me:
+                    rev.setdefault(part, set()).add(me)
+    return rev
+
+
+def expand_reverse(stems: set[str], rev: dict[str, set[str]]) -> set[str]:
+    """反向依赖的**传递闭包**：改 base → 谁依赖 base → 谁又依赖它……"""
+    out = set(stems)
+    frontier = list(stems)
+    while frontier:
+        cur = frontier.pop()
+        for dep in rev.get(cur, ()):
+            if dep not in out:
+                out.add(dep)
+                frontier.append(dep)
+    return out
+
+
 def affected_tests(root: str, changed: list[str]) -> tuple[list[str], list[str]]:
     """找受影响的测试文件。
 
@@ -125,6 +170,7 @@ def affected_tests(root: str, changed: list[str]) -> tuple[list[str], list[str]]
     picked: set[str] = set()
 
     all_tests: list[str] = []
+    all_files: list[str] = []
     for dp, dn, fn in os.walk(root):
         dn[:] = [
             d
@@ -143,8 +189,10 @@ def affected_tests(root: str, changed: list[str]) -> tuple[list[str], list[str]]
         ]
         for f in fn:
             rel = os.path.relpath(os.path.join(dp, f), root).replace("\\", "/")
-            if is_test_path(rel) and rel.endswith(SRC_EXT):
-                all_tests.append(rel)
+            if rel.endswith(SRC_EXT):
+                all_files.append(rel)
+                if is_test_path(rel):
+                    all_tests.append(rel)
 
     changed_src = [c for c in changed if c.endswith(SRC_EXT) and not is_test_path(c)]
     changed_test = [c for c in changed if is_test_path(c)]
@@ -165,12 +213,26 @@ def affected_tests(root: str, changed: list[str]) -> tuple[list[str], list[str]]
         if stem and stem != "__init__":
             stems.setdefault(stem, []).append(c)
 
+    # ③ 传递闭包：可能受影响的**全部模块名**（含依赖链上的间接模块）
+    rev = build_reverse_deps(all_files)
+    reachable = expand_reverse(set(stems), rev)
+    indirect_only = reachable - set(stems)
+
     for t in all_tests:
         if t in picked:
             continue
         try:
             body = open(os.path.join(root, t), encoding="utf-8", errors="ignore").read()
         except OSError:
+            continue
+        # 先试间接：测试引用的模块是否（经依赖链）依赖改动模块
+        hit_ind = [s for s in indirect_only if re.search(rf"\b{re.escape(s)}\b", body)]
+        if hit_ind:
+            picked.add(t)
+            reasons.append(
+                f"{t} 引用 {hit_ind[0]}，它经依赖链依赖改动模块 "
+                f"{'/'.join(sorted(stems))[:50]}"
+            )
             continue
         for stem, files in stems.items():
             # import 形式 或 模块名出现（含 test_<stem>.py 命名约定）

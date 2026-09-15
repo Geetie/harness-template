@@ -93,11 +93,19 @@ def load_cfg(root: str) -> tuple[dict, str]:
 
 
 def first_tool(cmd: str) -> str:
-    """从命令里猜主程序名，用于"是否安装"的判断与提示。"""
+    """从命令里猜主程序名，用于"是否安装"的判断与提示。
+
+    ⚠️ 不能无脑 `basename()`：带 scope 的 npm 包名形如 `@scope/pkg`，
+    `basename` 会把它截成 `pkg`（实测），于是 `npx @scope/pkg` 探测失败 →
+    **明明装了却报"未安装、已跳过"**。所以 `@` 开头的标记原样返回。
+    """
     parts = (cmd or "").split()
     for tok in parts:
         if tok in ("npx", "npm", "yarn", "pnpm", "run", "--", "-m"):
             continue
+        if tok.startswith("@"):
+            # scope 包名：`@scope/pkg` 整体是"工具名"，不能取 basename
+            return tok
         base = os.path.basename(tok)
         if base:
             return base
@@ -125,8 +133,13 @@ def tool_available(cmd: str) -> tuple[bool, str]:
         if not pkg:
             return False, "无法解析包名"
         try:
+            # ⚠️ Windows 下 `npx` / `npm` 实为 `npx.cmd` / `npm.cmd`，
+            # 直接 `subprocess.run(["npx", ...])`（不经 shell）会抛
+            # FileNotFoundError → 被下面捕获后报"探测失败"（实测），
+            # 于是**明明装了却判为未安装**。用 shutil.which 拿到真实路径再调。
+            exe = shutil.which(parts[0]) or parts[0]
             r = subprocess.run(
-                [parts[0], "--no-install", pkg, "--version"],
+                [exe, "--no-install", pkg, "--version"],
                 capture_output=True,
                 text=True,
                 timeout=60,
