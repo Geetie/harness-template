@@ -56,12 +56,18 @@ def repo_root() -> str | None:
 
 
 def load_code_root(root: str) -> str | None:
+    return (load_config(root) or {}).get("code_root")
+
+
+def load_config(root: str) -> dict | None:
+    """读 .harness/config.json。失败返回 None（调用方须显式处理，不静默）。"""
     cfg = os.path.join(root, ".harness", "config.json")
     if not os.path.isfile(cfg):
         return None
     try:
         with open(cfg, "r", encoding="utf-8") as f:
-            return (json.load(f) or {}).get("code_root")
+            data = json.load(f)
+        return data if isinstance(data, dict) else None
     except (json.JSONDecodeError, OSError):
         return None
 
@@ -87,7 +93,7 @@ def main() -> int:
     code, out = git("diff", "--cached", "--name-only", "--diff-filter=ACMR")
     if code != 0:
         return 2
-    staged = [l.strip().replace("\\", "/") for l in out.splitlines() if l.strip()]
+    staged = [ln.strip().replace("\\", "/") for ln in out.splitlines() if ln.strip()]
     if not staged:
         return 0
 
@@ -178,8 +184,82 @@ def main() -> int:
             problems.append(f"代码规范检查执行失败（视为未通过）: {e}")
     # 脚本不存在 = code-quality 模块未启用，静默跳过（可插拔：关掉的模块不该打扰）
 
+    # ── 检查 4：证据门禁（防"只声明完成"）──
+    # 触发条件精准：只在 status 文件被改动时跑。
+    # 因为"把功能标成 completed"这个动作必然改 feature_list.json ——
+    # 此时不校验证据，等于门禁形同虚设（此前就是这个状态：字段存在但没人核）。
+    # 平时（改代码不改状态）不跑，避免每次提交都执行一遍证据命令。
+    STATE_FILE = ".harness/state/feature_list.json"
+    if STATE_FILE in staged:
+        gate = os.path.join(root, "scripts", "evidence_gate.py")
+        if os.path.isfile(gate):
+            try:
+                r = subprocess.run(
+                    [sys.executable, gate, "--json"],
+                    cwd=root,
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                )
+                if r.returncode != 0:
+                    tail = (r.stdout or r.stderr or "").strip()
+                    problems.append(
+                        "证据门禁未通过（标记 completed 必须有可执行证据）\n"
+                        + (tail[-1500:] if tail else f"      退出码 {r.returncode}")
+                        + "\n      用法见 scripts/evidence_gate.py 头部说明"
+                    )
+            except subprocess.TimeoutExpired:
+                problems.append(
+                    "证据门禁超时（300s）—— 证据命令应当很快，请检查它是否在跑全套测试"
+                )
+            except (OSError, subprocess.SubprocessError) as e:
+                problems.append(f"证据门禁执行失败（视为未通过）: {e}")
+        else:
+            # 模块未启用 → 但要提醒"状态文件被改了却没人核证据"这个事实
+            print(
+                "[harness] 提示：feature_list.json 已改动，但未启用证据门禁"
+                "（scripts/evidence_gate.py 不存在）"
+            )
+
+    # ── 检查 5：接线检查（防"写了但没接上"）──
+    # 只在配置了入口时跑。没配入口 → 明确提示怎么配，不静默跳过。
+    cfg_all = load_config(root) or {}
+    integ = cfg_all.get("integration") or {}
+    entry = integ.get("entry") if isinstance(integ, dict) else None
+    if entry:
+        ci = os.path.join(root, "scripts", "check_integration.py")
+        if os.path.isfile(ci):
+            code_root_i = cfg_all.get("code_root") or "src"
+            entries = entry if isinstance(entry, list) else [entry]
+            cmd_i = [sys.executable, ci, code_root_i]
+            for e in entries:
+                cmd_i += ["--entry", str(e)]
+            try:
+                r = subprocess.run(
+                    cmd_i, cwd=root, capture_output=True, text=True, timeout=180
+                )
+                # 退出码 2 = 用法/入口错误 —— 那是配置问题，也要拦（否则门禁形同没有）
+                if r.returncode != 0:
+                    tail = (r.stdout or r.stderr or "").strip()
+                    problems.append(
+                        "接线检查未通过（有模块写了但没被任何地方调用）\n"
+                        + (tail[-1200:] if tail else f"      退出码 {r.returncode}")
+                        + "\n      每个孤儿模块要么接进调用链，要么删掉"
+                    )
+            except subprocess.TimeoutExpired:
+                problems.append("接线检查超时（180s）")
+            except (OSError, subprocess.SubprocessError) as e:
+                problems.append(f"接线检查执行失败（视为未通过）: {e}")
+    elif os.path.isfile(os.path.join(root, "scripts", "check_integration.py")):
+        print("[harness] 提示：未配置 integration.entry，跳过接线检查。")
+        print(
+            '          在 .harness/config.json 加： "integration": {"entry": "src/main.py"}'
+        )
+
     if not problems:
-        print("[harness] ✅ 检查通过（harness 已同步 + 无占位实现 + 代码规范）")
+        print(
+            "[harness] ✅ 检查通过（harness 已同步 + 无占位 + 代码规范 + 证据 + 接线）"
+        )
         return 0
 
     print("\n" + "╔" + "═" * 62 + "╗")

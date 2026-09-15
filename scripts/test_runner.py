@@ -41,7 +41,6 @@ import argparse
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 
@@ -99,7 +98,9 @@ def git_changed(root: str) -> tuple[list[str], str]:
             continue
         if r.returncode == 0:
             files = [
-                l.strip().replace("\\", "/") for l in r.stdout.splitlines() if l.strip()
+                ln.strip().replace("\\", "/")
+                for ln in r.stdout.splitlines()
+                if ln.strip()
             ]
             return files, f"`{' '.join(args)}` 得到 {len(files)} 个改动文件"
         last = (r.stderr or "").strip()[:160]

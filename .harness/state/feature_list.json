@@ -2,11 +2,11 @@
   "version": "1.0",
   "last_updated": "{{DATE}}",
   "project": "{{PROJECT_NAME}}",
-  "description": "功能实现状态追踪。只翻转 status，禁止删除条目。",
+  "description": "功能实现状态追踪。只翻转 status，禁止删除条目。标 completed 必须提供可执行证据（scripts/evidence_gate.py 强制）。",
   "legend": {
     "missing": "未实现",
-    "partial": "部分实现",
-    "completed": "已实现并由 evidence 指向的真实路径核实",
+    "partial": "部分实现（须在 notes 写明还差什么）",
+    "completed": "已实现，且 evidence 是可执行的验收契约并通过校验",
     "blocked": "被阻塞，notes 说明原因",
     "deprecated": "已废弃，notes 说明原因（保留条目，靠 git 历史找回）"
   },
@@ -17,7 +17,7 @@
       "spec": ".harness/planning/SPEC-TEMPLATE.md",
       "status": "missing",
       "evidence": "",
-      "notes": "Phase 0 必做：用最薄但每层都真实的路径跑通端到端"
+      "notes": "Phase 0 必做：用最薄但每层都真实的路径跑通端到端。完成时把 evidence 换成上面的契约对象，否则提交会被拦。"
     }
   ],
   "summary": {
@@ -28,5 +28,23 @@
     "blocked": 0,
     "deprecated": 0,
     "completion_rate": "0%"
+  },
+  "evidence_contract": {
+    "_说明": "completed 的 evidence 必须是对象形式；只写路径会被降级为 WARN 并要求升级",
+    "_原因": "路径只证明文件存在，不证明它能跑。垃圾实现（返回 0.0/{}）也能让路径存在。",
+    "cmd": "命令（会被真的执行）。例：python scripts/verify/F-001.py",
+    "expect_exit": 0,
+    "expect_stdout": [
+      "总价: 42.0"
+    ],
+    "_expect_stdout_要求": "必须是**具体值**（含数字）。写 'ok'/'成功' 这类通用词会被判为无效契约。",
+    "artifacts": [
+      "out/receipt.json"
+    ],
+    "_artifacts_要求": "列出的文件必须存在且非空（0 字节 = 没有真的产出）",
+    "touches": [
+      "src/cart.py"
+    ],
+    "_touches_要求": "证据脚本必须真的引用这些文件，否则判为「自说自话」，阻断交付"
   }
 }

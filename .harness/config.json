@@ -1,0 +1,18 @@
+{
+  "project": "harness-template",
+  "stack": "python",
+  "preset": "full",
+  "modules": {},
+  "code_root": "scripts",
+  "commands": {},
+  "quality": {
+    "lint": "ruff check .",
+    "lint_fix": "ruff check . --fix",
+    "format_check": "ruff format --check .",
+    "format_fix": "ruff format ."
+  },
+  "baseline": {
+    "test": ""
+  },
+  "_note": "模板仓库自身的配置。生成的项目会用自己的 config.json，不复制这一份。"
+}

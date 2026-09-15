@@ -56,7 +56,7 @@ import os
 import re
 import sys
 from dataclasses import dataclass, asdict
-from datetime import date, datetime
+from datetime import date
 
 # 模块归属只从共享清单读（单一真相源）—— 生成侧与检查侧必须认识同一份模块表，
 # 否则会出现"关掉的模块仍被判死链"或"模块关不干净"。详见 module_manifest.py。
@@ -553,7 +553,7 @@ def check_l003(root: str, docs: list[str]) -> list[Finding]:
             continue
         used.update(cluster)
         detail = "；".join(
-            f"{cb}（{', '.join(f'{f}:{l}' for f, l in hits[cb][:3])}）"
+            f"{cb}（{', '.join(f'{fn}:{ln}' for fn, ln in hits[cb][:3])}）"
             for cb in cluster
         )
         out.append(

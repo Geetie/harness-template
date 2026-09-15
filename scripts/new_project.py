@@ -48,9 +48,7 @@ VERSION = "1.1.0"  # 占位，下面被单一真相源覆盖
 # 必须认识同一份模块表，否则"关不干净"或"关掉还被判死链"。详见 module_manifest.py。
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from module_manifest import (  # noqa: E402
-    ALWAYS_FILES as _MANIFEST_ALWAYS,
     EXCLUDE_FILES as _MANIFEST_EXCLUDE,
-    MODULES as _MANIFEST_MODULES,
     PRESETS,
     module_deps,
     module_paths,

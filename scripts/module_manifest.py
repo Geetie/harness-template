@@ -63,6 +63,8 @@ MODULES: dict[str, dict] = {
             "scripts/module_manifest.py",
             "scripts/state_health.py",
             ".harness/hooks/hooks.json",
+            # 证据门禁：标 completed 必须给可执行证据（防"只声明完成"）
+            "scripts/evidence_gate.py",
             ".githooks/pre-commit",
             ".githooks/pre-commit.py",
             # harness_version.py 必须归 verification：它被 init/lint/new_project/guard
@@ -208,7 +210,7 @@ MODULE_REQUIRED: dict[str, list[str]] = {
         ".harness/state/feature_list.json",
         ".harness/state/session-handoff.md",
     ],
-    "verification": [".harness/VERIFICATION.md"],
+    "verification": [".harness/VERIFICATION.md", "scripts/evidence_gate.py"],
     "memory": [
         ".harness/memory/lessons.md",
         ".harness/memory/failure-modes.md",
@@ -286,6 +288,9 @@ ALWAYS_FILES = [
 # 这里也是单一真相源：new_project（复制侧）与 sync_template（比较侧）共用，
 # 否则同步器会把"模板有但故意不复制"的文件当成"新增项"反复报。
 EXCLUDE_FILES = {
+    # 模板仓库自身的运行配置：生成的项目会**新写**自己的 config.json，
+    # 不该继承模板的那份（否则 new_project 先复制再覆盖，白做一遍且易出错）。
+    ".harness/config.json",
     ".harness/memory/_REVIEW-候选清单.md",
     # 模板仓库自身标记：生成的项目不是模板仓库，绝不能继承它。
     # 一旦泄漏，新项目的 pre-commit 会误判"我是模板"，
