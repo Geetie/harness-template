@@ -102,6 +102,24 @@ STACKS = {
             "format_fix": "ruff format .",
         },
         "tech_stack": "Python + pytest + ruff（lint 与 format 二合一）",
+        # ⚠️ 必须生成 pytest.ini（实测 bug 的修复）：
+        # 模板自带的 `scripts/test_runner.py` / `scripts/test_audit.py`
+        # 文件名匹配 pytest 的 `test_*.py` 收集规则，于是**任何**用本模板的
+        # Python 项目跑 `pytest` 都会去收集它们，而里面的业务函数
+        # （如 `test_command(cfg)`）会被当成测试用例 →
+        # `ERROR: fixture 'cfg' not found` → 项目第一天就红。
+        # 用 norecursedirs 排除 scripts/ 治本（比改 test 命令更彻底：
+        # 用户手跑 `pytest` 也正确）。
+        "extra_files": {
+            "pytest.ini": (
+                "[pytest]\n"
+                "# scripts/ 下是 harness 的工具脚本（test_runner / test_audit 等），\n"
+                "# 它们不是本项目的测试用例；不排除会让 pytest 误收集并报\n"
+                "# \"fixture 'cfg' not found\"（模板自带这两个 test_*.py 文件）。\n"
+                "norecursedirs = scripts .git __pycache__ node_modules .venv\n",
+                "testing",
+            ),
+        },
     },
     "tauri": {
         "code_root": "src",
@@ -249,7 +267,11 @@ def substitute(root: str, mapping: dict) -> tuple[int, dict]:
         # 后患还包括：同步器拿"替换后的项目"比"替换后的模板"时口径不一致。
         dirnames[:] = [d for d in dirnames if d not in EXCLUDE_TOP and d != ".git"]
         for fn in filenames:
-            if fn == self_name:
+            # 脚本文件整体不替换（含 new_project.py 自身）——
+            # 判据与同步侧共用 sync_lib.is_no_substitute（单一真相源）。
+            # 见 sync_lib.NO_SUBSTITUTE_EXTS 的说明：脚本里的占位符形态
+            # 是"描述规则"的注释，机械替换会改写成语义荒谬的内容。
+            if fn == self_name or SYNC.is_no_substitute(fn):
                 continue
             p = os.path.join(dirpath, fn)
             if not is_text(p):
@@ -482,6 +504,22 @@ def main(argv=None) -> int:
 
     replaced, remaining = substitute(dst, mapping)
     print(f"替换占位符 {replaced} 处")
+
+    # ── 技术栈特有的补充文件 ──
+    # 位置很关键：必须在 substitute 之后、**基线快照之前** ——
+    # 这样它们会被记进基线，将来模板改进这些文件时 sync_template 能同步到项目。
+    written_extra = []
+    for rel, spec in (preset.get("extra_files") or {}).items():
+        content, need_mod = spec if isinstance(spec, tuple) else (spec, None)
+        if need_mod and not modules.get(need_mod, True):
+            continue  # 依赖的模块被关掉 → 不生成（也不静默：下面会说明）
+        target = os.path.join(dst, rel)
+        os.makedirs(os.path.dirname(target) or dst, exist_ok=True)
+        with open(target, "w", encoding="utf-8", newline="") as fh:
+            fh.write(content)
+        written_extra.append(rel)
+    if written_extra:
+        print(f"生成技术栈补充文件 {len(written_extra)} 个: {', '.join(written_extra)}")
 
     # 记录模板基线快照（**必须在占位符替换之后**）
     # 用途：将来 sync_template.py 做三向合并时，用它判断"差异到底是谁造成的"。

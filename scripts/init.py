@@ -298,6 +298,20 @@ def check_state_limits(root: str) -> list[tuple[str, bool, str]]:
 
 
 def run_commands(root: str, cfg: dict) -> list[tuple[str, bool, str]]:
+    """跑 config.json 里配的质量命令，逐条报告结果。
+
+    ⚠️ 两条实测踩出来的规则：
+      ① **stdout / stderr 必须合并看**。原来写 `(r.stdout or r.stderr)` ——
+         短路后 stdout 非空就完全不看 stderr，于是"真正的错误在 stderr、
+         输出里却只显示一句无关的 stdout 尾行"。用户第一天就会遇到这个：
+         未装 pytest 时界面显示 `exit=1 | 1 error in 0.03s`，
+         真实原因（No module named pytest）被吞掉。
+      ② **「命令不存在」与「命令跑了但失败」必须分开**。
+         前者是环境缺依赖，后者才是项目问题。这与 check_quality_tools 的
+         原则一致（"工具没装不该让 init 报红，否则新 clone 的仓库永远不健康"）——
+         同一份报告里不能两套标准：那边宽容、这边严苛。
+         但**不静默**：明确写"未安装"并给出安装提示。
+    """
     out = []
     cmds = (cfg or {}).get("commands", {})
     if not cmds:
@@ -310,12 +324,38 @@ def run_commands(root: str, cfg: dict) -> list[tuple[str, bool, str]]:
             r = subprocess.run(
                 cmd, cwd=root, shell=True, capture_output=True, text=True, timeout=900
             )
+            # ① 合并两个流：只看 stdout 会把真正的错误吞掉
+            combined = ((r.stdout or "") + "\n" + (r.stderr or "")).strip()
+            lines = [ln for ln in combined.splitlines() if ln.strip()]
+            last = lines[-1][:160] if lines else "(无输出)"
+
+            # ② 命令不存在 → 环境缺依赖，**不算项目失败**，但必须说清
+            missing_markers = (
+                "not recognized",
+                "command not found",
+                "No module named",
+                "is not recognized as an internal or external command",
+            )
+            if r.returncode in (127, 9009) or any(
+                mk.lower() in combined.lower() for mk in missing_markers
+            ):
+                hint = ""
+                # 给最常见的几条命令配安装提示（不猜，只覆盖确定知道的）
+                if cmd.strip().startswith("pytest"):
+                    hint = "（装：pip install pytest）"
+                elif cmd.strip().startswith("npm") or cmd.strip().startswith("npx"):
+                    hint = "（装：npm install）"
+                out.append(
+                    (
+                        f"{name}: {cmd}",
+                        True,
+                        f"命令不可用 —— 依赖未安装 {hint}｜{last}",
+                    )
+                )
+                continue
+
             ok = r.returncode == 0
-            tail = (r.stdout or r.stderr or "").strip().splitlines()
-            detail = f"exit={r.returncode}"
-            if tail:
-                detail += " | " + tail[-1][:160]
-            out.append((f"{name}: {cmd}", ok, detail))
+            out.append((f"{name}: {cmd}", ok, f"exit={r.returncode} | {last}"))
         except subprocess.TimeoutExpired:
             out.append((f"{name}: {cmd}", False, "超时（900s）"))
         except OSError as e:

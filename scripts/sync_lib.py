@@ -95,13 +95,38 @@ def sha256_bytes(data: bytes) -> str:
 # 两边口径就又不一致（实测：全新项目稳定报 new_project.py"有更新"）。
 NO_SUBSTITUTE_BASENAMES = {"new_project.py"}
 
+# **扩展名**级的"不替换"——理由与上一条同类，但更普遍：
+# 脚本文件里的占位符形态几乎都出现在**注释 / docstring 里**，是在**描述规则**
+# 而不是留占位符。机械替换会把说明文字改写成荒谬内容（实测）：
+#     sync_lib.py 的 `"""把 {{KEY}} 替换成 mapping 里的值。`
+#     +  `为什么必须有它：模板里是 {{PROJECT_NAME}}，项目里是实值。`
+#   → 项目里变成 `为什么必须有它：模板里是 FreshApp，项目里是实值。`
+# 语义完全反了（原意是"模板侧是占位符形态、项目侧是实值"）。
+# 副作用之二：这些文件会出现在脚手架的"请人工填写"清单里，用户会困惑
+# "这个脚本我要填什么？"。
+NO_SUBSTITUTE_EXTS = (".py",)
+
+
+def is_no_substitute(rel: str) -> bool:
+    """该文件是否**不做**占位符替换（生成侧与同步侧共用同一条规则）。"""
+    r = rel.replace("\\", "/")
+    base = r.rsplit("/", 1)[-1]
+    if base in NO_SUBSTITUTE_BASENAMES:
+        return True
+    return base.endswith(NO_SUBSTITUTE_EXTS)
+
 
 def apply_substitutions(
     data: bytes, mapping: dict[str, str], rel: str | None = None
 ) -> bytes:
-    """把 {{KEY}} 替换成 mapping 里的值。
+    """把模板里的占位符替换成 mapping 里的实值（如 PROJECT_NAME → 真实项目名）。
 
-    为什么必须有它：模板里是 `{{PROJECT_NAME}}`，项目里是实值。
+    ⚠️ 本 docstring 里**故意不写双花括号字面量**：脚手架会把形如
+    双花括号+大写键名的文本当成"待用户填写的占位符"列进提示清单，
+    于是 `sync_lib.py` 会出现在"请填写"列表里 —— 实测踩到，用户看到会困惑
+    （"这个文件我要填什么？"）。这里是在**描述**规则，不是在留占位符。
+
+    为什么必须有它：模板里是占位符形态、项目里是实值。
     同步器比较的是"模板当前 vs 项目当前"，若不对模板施加同样的替换，
     两边**永远不相等**，于是每个新项目都被误判成"模板有更新"（实测踩到）。
 
