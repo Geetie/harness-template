@@ -178,6 +178,35 @@ def load_config(root: str) -> tuple[dict | None, str | None]:
         return None, f".harness/config.json 不是合法 JSON: {e}"
 
 
+def check_config_present(
+    root: str, cfg: dict | None
+) -> list[tuple[str, str, bool, str]]:
+    """`.harness/config.json` 是否在位 —— **单列一条，因为它缺失时无人报**。
+
+    为什么必须单列（实测漏报）：
+    `load_config` 在文件不存在时返回 `(None, None)`，被 main 当成"正常默认"，
+    于是 init 报"全部通过"。但 config.json 是**多道门禁的开关来源**：
+      · `code_root` 缺失 → 反占位符检查**跳过**（guard 不扫任何目录）
+      · `quality` 段缺失 → 代码规范检查直接 return 2（失败）
+      · `commands` 缺失 → 质量命令跳过
+      · `integration.entry` 缺失 → 接线检查降级为粗判定
+    → **多道门禁静默失效，而用户看到的是绿灯。**
+    这与 L003（`\\b` 导致检查从不触发）同族：**"没配置"与"配置正常"同形。**
+    """
+    cfg_path = os.path.join(root, ".harness", "config.json")
+    if os.path.isfile(cfg_path):
+        return [("③验证层", "config.json 在位", True, "")]
+    return [
+        (
+            "③验证层",
+            "config.json 缺失",
+            False,
+            "多道门禁会静默失效（反占位符跳过 / 代码规范失败 / 质量命令跳过）。"
+            "重建：new_project.py 或手写一份",
+        )
+    ]
+
+
 def check_structure(root: str, required: list) -> list[tuple[str, str, bool, str]]:
     """返回 [(层, 文件, 是否存在, 说明)]"""
     out = []
@@ -411,6 +440,7 @@ def main(argv=None) -> int:
         results += [("②状态层", n, ok, d) for (n, ok, d) in check_state_limits(root)]
     else:
         print("[SKIP] state 模块未启用，跳过状态文件完整性与体积检查", file=sys.stderr)
+    results += [(c, n, ok, dd) for (c, n, ok, dd) in check_config_present(root, cfg)]
     results += [("③验证层", n, ok, d) for (n, ok, d) in check_hooks(root)]
     if modules.get("code-quality", True):
         results += [
