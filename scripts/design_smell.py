@@ -44,9 +44,25 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from harness_version import TEMPLATE_VERSION as VERSION  # noqa: E402
 
 # 阈值：宁可宽松。误报会让人关掉这个检查，那就等于没有检查（S13 降噪即有效性）。
-MAX_LINES = 500
+#
+# ⚠️ 这些值**本轮（第十二批）才第一次用数据校准**，此前全是拍定的：
+# 用模板仓库自身 16 个脚本（真实工程代码）统计实际分布，目标"只抓最极端的 ~10%"
+# （即阈值 ≥ P90），避免常见规模就报警。
+#
+#   MAX_LINES   原 500 → **800**：样本 P50=502、P90=684 ——
+#               500 会让 **8/16 个文件**（含中位数！）全部超限，纯噪音。
+#   MAX_NESTING 原 4   → **6**：样本 P90=6。算法把 if/for/while/try/with 都计入，
+#               而 Python 里 try 极常见，4 层在真实代码里是常态。
+#   MAX_TOP_DEFS 20 保持：样本 P90=14，仅 1/16 超限 → 合理。
+#   MAX_PARAMS 5 保持：154 个函数里 P99=5、0 超限 → 合理。
+#   MAX_CLASS_METHODS 15 保持：**样本无类（最大 2 个方法）→ 校准不了**，
+#               保留经验值并标注为已知盲区。
+#
+# 样本局限：仅 16 个文件、风格统一、规模偏小 → 会**低估**真实项目分布，
+# 因此新值仍是估计。真实项目的合理值应更高。
+MAX_LINES = 800
 MAX_TOP_DEFS = 20
-MAX_NESTING = 4
+MAX_NESTING = 6
 MAX_PARAMS = 5
 MAX_CLASS_METHODS = 15
 

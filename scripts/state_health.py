@@ -57,8 +57,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # 版本来自单一真相源（此前各脚本各写一份，实测已漂移：lint 1.1.1 / health 1.0.0）
 from harness_version import TEMPLATE_VERSION as VERSION  # noqa: E402
 
+# ⚠️ 上限值本轮（第十二批）校准：原来 AGENTS.md 的 max_lines=150
+# **正好等于模板自身的行数** —— 再改一行就超限，没有任何余量。
+# 阈值贴着"当前状态"定，等于把"现状"当成了"上限"，无法区分"正常"与"膨胀"。
+# 各值上调约 30% 留出余量，并把"何时该归档"与"何时算超标"分开。
 DEFAULT_LIMITS = {
-    "AGENTS.md": {"max_bytes": 16 * 1024, "max_lines": 150},
+    "AGENTS.md": {"max_bytes": 24 * 1024, "max_lines": 200},
     "progress.md": {"max_bytes": 32 * 1024, "max_lines": 300, "keep_log_lines": 120},
     "session-handoff.md": {"max_bytes": 16 * 1024, "max_lines": 200},
     "feature_list.json": {
