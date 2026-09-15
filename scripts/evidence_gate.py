@@ -158,6 +158,27 @@ def check_expect_strength(expect: list[str]) -> list[str]:
     return problems
 
 
+def _read_retvals(log_path: str) -> dict[str, str]:
+    """读探针记下的函数返回值（"文件::函数名" -> 值的字符串形式）。
+
+    读不到就返回空 dict（下面会跳过"输出校验"并说明）——
+    这是降级不是静默：调用方会打印"跳过输出校验"的理由。
+    """
+    out: dict[str, str] = {}
+    try:
+        with open(log_path + ".ret", "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.rstrip("\n")
+                if not line or "\x1f" not in line:
+                    continue
+                k, _, v = line.partition("\x1f")
+                if k:
+                    out[k] = v
+    except OSError:
+        return {}
+    return out
+
+
 def has_function_def(path: str) -> bool:
     """该 Python 文件是否定义了函数/方法。
 
@@ -358,13 +379,47 @@ def run_evidence(root: str, ev: dict, fid: str) -> tuple[list[str], list[str]]:
                 )
                 continue
             named = {n for n in names if n and n != "<module>"}
-            if named:
+            if not named:
+                # 只有 <module>：看该文件是不是纯脚本式（无函数定义）
+                if has_function_def(os.path.join(root, t)):
+                    errors.append(
+                        f"{t} 只被 import 加载、其中的函数**一次都没被调用** —— "
+                        f"证据没有真正验证它的行为"
+                    )
                 continue
-            # 只有 <module>：看该文件是不是纯脚本式（无函数定义）
-            if has_function_def(os.path.join(root, t)):
-                errors.append(
-                    f"{t} 只被 import 加载、其中的函数**一次都没被调用** —— "
-                    f"证据没有真正验证它的行为"
+
+        # ── 更深一层：输出的值必须真的来自这些函数 ──
+        # 只验证"函数被调用"不够 —— `total()` 调了却 print 硬编码答案
+        # 照样能骗过（实测 E1/E4 绕过）。要求"返回值出现在输出里"，
+        # 才算验证了"输出确实由它产生"。
+        if not errors and per_file:
+            ret_vals = _read_retvals(log_path)
+            meaningful: list[str] = []
+            for t in touches:
+                want = os.path.abspath(os.path.join(root, t)).lower()
+                for key, val in ret_vals.items():
+                    f_, _, fn_ = key.rpartition("::")
+                    if f_.lower() != want:
+                        continue
+                    if fn_ == "<module>":
+                        continue  # 模块级执行无返回值，跳过
+                    if val and val not in ("None", "{}", "[]", "''", '""', "()"):
+                        meaningful.append(val)
+            if meaningful:
+                if not any(v in out for v in meaningful):
+                    shown = ", ".join(repr(v)[:40] for v in meaningful[:3])
+                    errors.append(
+                        f"touches 文件的函数返回值（{shown}）"
+                        f"**一个都没有出现在输出里** ——\n"
+                        f"        说明输出不是由这些函数产生的（疑似硬编码答案）。\n"
+                        f"        实际输出尾部: {out.strip()[-200:]}"
+                    )
+                else:
+                    info.append("输出校验通过：函数返回值确实出现在输出中")
+            else:
+                info.append(
+                    "跳过输出校验：这些函数没有可比的返回值（值得是副作用型，"
+                    "或是返回 None），无法用「值是否出现在输出里」判断"
                 )
         if not errors:
             info.append(f"运行时校验通过：{len(touches)} 个文件的函数均被真实调用")
@@ -384,10 +439,11 @@ def run_evidence(root: str, ev: dict, fid: str) -> tuple[list[str], list[str]]:
             )
 
     if can_probe:
-        try:
-            os.remove(log_path)
-        except OSError:
-            pass  # 临时文件删不掉不影响结论，不打扰用户
+        for suffix in ("", ".ret"):
+            try:
+                os.remove(log_path + suffix)
+            except OSError:
+                pass  # 临时文件删不掉不影响结论，不打扰用户
 
     for a in ev.get("artifacts") or []:
         ap = os.path.join(root, a)

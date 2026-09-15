@@ -59,6 +59,7 @@ def main() -> int:
         return PROBE_INTERNAL_ERROR
 
     touched: set[str] = set()
+    retvals: dict[str, str] = {}  # "文件::函数名" -> 返回值的字符串形式
 
     def tracer(frame, event, arg):
         if event == "call":
@@ -69,6 +70,20 @@ def main() -> int:
                 # 只记文件的话「import 但不调用」会被误判成"执行过"（实测绕过）。
                 # 校验时需要区分「模块被加载」与「里面的函数被调用」。
                 touched.add(f"{os.path.abspath(fn)}::{frame.f_code.co_name}")
+        elif event == "return":
+            # 记返回值：只验证"函数被调用"是不够的 ——
+            # `total()` 调了却 print 硬编码答案，照样能骗过（实测 E1 绕过）。
+            # 有了返回值，就能要求「它的值必须出现在输出里」，
+            # 从而验证"输出确实由它产生"，而不只是"它被碰过"。
+            fn = frame.f_code.co_filename
+            if fn:
+                try:
+                    s = str(arg)
+                except Exception:  # noqa: BLE001 —— __str__ 可能抛任意异常
+                    s = ""
+                if s and len(s) <= 200:
+                    key = f"{os.path.abspath(fn)}::{frame.f_code.co_name}"
+                    retvals.setdefault(key, s)
         return tracer
 
     # 模拟把目标当脚本跑：设 sys.argv，让 `if __name__ == "__main__"` 生效
@@ -97,6 +112,10 @@ def main() -> int:
         try:
             with open(log_path, "w", encoding="utf-8") as f:
                 f.write("\n".join(sorted(touched)))
+            # 返回值单独一个文件：用 \x1f 分隔，避免值里含 : 或 :: 造成误解码
+            with open(log_path + ".ret", "w", encoding="utf-8") as f:
+                for k, v in sorted(retvals.items()):
+                    f.write(f"{k}\x1f{v}\n")
         except OSError as e:
             # 日志写不了 = 无法验证 touches，必须显式报错而不是让门禁"以为通过"
             print(

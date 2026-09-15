@@ -194,21 +194,33 @@ RULES: list[Rule] = [
         "中文未完成标记（要求出现在注释中，避免误伤说明性文字）",
     ),
     _r(
+        # 词表口径（实测校准，2026-09-15）：
+        # 原来含独立的 `NotImplemented`，但它是 **Python 内置单例**，
+        # 用于实现比较协议（`__eq__` 返回它让解释器尝试反向比较）——
+        # **完全合法且推荐**。实测 `if x is NotImplemented:` 与
+        # `return NotImplemented` 都被误抓（真误报）。
+        # 去掉该分支不影响抓捕：`NotImplementedError` 由前面的分支覆盖。
         "not-implemented",
         "error",
-        r"\b(NotImplementedError|NotImplementedException|NotImplemented)\b",
+        r"\b(NotImplementedError|NotImplementedException)\b",
         "抛出未实现异常，属于桩实现",
     ),
     _r(
         "stub-return",
         "error",
-        r"return\s+(['\"])[^'\"]{0,40}?(mock|fake|dummy|placeholder|stub|示例|假数据|测试数据)[^'\"]{0,40}?\1",
+        # mock 后面加 (?![a-zA-Z])：`"mockup design"` 里的 mockup 是正常设计术语，
+        # 用裸 `mock` 会误抓。加负向前瞻后 mockup / mocking 不再命中，
+        # 而 mock / mock_data / mock data 仍然命中（`_` 不是字母）。
+        r"return\s+(['\"])[^'\"]{0,40}?(mock(?![a-zA-Z])|fake(?![a-zA-Z])|dummy|placeholder|stub|示例|假数据|测试数据)[^'\"]{0,40}?\1",
         "返回硬编码的假数据字符串",
     ),
     _r(
         "stub-variable",
         "error",
-        r"\b(mock_data|fake_data|dummy_data|假数据|示例数据|写死的?数据)\b",
+        # 用 (?<![a-zA-Z]) / (?![a-zA-Z]) 而不是 \b：
+        # `\b` 在 `get_mock_data` 的 `_m` 之间不成立（`_` 也是 word char），
+        # 导致函数名里的假数据变量漏报。改后 `get_mock_data` 能被抓到。
+        r"(?<![a-zA-Z])(mock_data|fake_data|dummy_data|假数据|示例数据|写死的?数据)(?![a-zA-Z])",
         "假数据变量/常量：说明真实数据源没接上",
     ),
     _r(
