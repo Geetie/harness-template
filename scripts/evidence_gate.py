@@ -35,8 +35,14 @@ legend 写着"由 evidence 指向的真实路径核实"—— **但从来没有�
 --------
 1. **必须有证据**：`completed` 却没有可执行证据 → 拦
 2. **证据必须真跑通**：执行 cmd，比对退出码 / stdout / 产物 → 不符则拦
-3. **证据必须触及实现**：`touches` 列出的文件要被证据脚本引用 → 否则拦
-   （防止证据脚本自说自话，与被测代码无关）
+3. **证据必须触及实现（运行时验证，非静态）**：`touches` 列出的文件，
+   其中的**函数必须真的被调用**。用 `_evidence_probe.py` 以 `sys.settrace`
+   观测执行轨迹 —— 只 import 不调用会被拦（静态文本匹配拦不住这个，
+   实测被绕过：`import src.cart` + 硬编码答案）。
+   非 `python xxx.py` 形式的命令（pytest/node/go test）降级为静态检查，
+   并在输出里**明确标注"未做运行时验证"**。
+4. **产物必须是本次产出**：记录 artifacts 在执行前后的 size+mtime，
+   完全没变 → 判为复用旧文件 → 拦
 
 另外做**基线锁**：记录已完成数 + 强证据数，下降即拦
 （防止悄悄把功能改回 missing 来"清理"门禁告警）。
@@ -58,12 +64,14 @@ legend 写着"由 evidence 指向的真实路径核实"—— **但从来没有�
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import os
 import re
 import subprocess
 import sys
+import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from harness_version import TEMPLATE_VERSION as VERSION  # noqa: E402
@@ -150,12 +158,51 @@ def check_expect_strength(expect: list[str]) -> list[str]:
     return problems
 
 
-def check_touches(root: str, touches: list[str], cmd: str) -> list[str]:
-    """交叉验证：证据脚本是否真的触及了它声称覆盖的源文件。
+def has_function_def(path: str) -> bool:
+    """该 Python 文件是否定义了函数/方法。
 
-    做法：读 cmd 里涉及的脚本（取第一个 .py），看它文本里是否引用了 touches 文件
-    （按路径或模块名）。这是"防自说自话"的关键——没有这层，
-    证据脚本可以 print 一个常量就宣称覆盖了任何功能。
+    用途：判断「只有 <module> 被记录」是否可接受 ——
+    纯脚本式模块（无函数定义）的模块级就是它的全部逻辑，import 即执行，
+    此时接受；有函数定义却一次没被调用，说明证据没验证它。
+    """
+    try:
+        tree = ast.parse(open(path, encoding="utf-8", errors="ignore").read())
+    except (OSError, SyntaxError):
+        return False
+    return any(
+        isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) for n in ast.walk(tree)
+    )
+
+
+def probe_command(root: str, cmd: str, log_path: str) -> tuple[str | None, bool]:
+    """把 `python x.py [args]` 重写成带运行时探针的调用。
+
+    为什么必须做运行时探针：静态文本匹配只看"有没有出现这个名字"，
+    于是 `import src.cart` + 硬编码答案 就能骗过门禁（**实测绕过了**）。
+    只有观测"这段代码到底跑没跑"才拦得住。
+
+    返回 (新命令 | None, 是否可探针化)。非 `python x.py` 形式（如 pytest、
+    node、go test）返回 False —— 此时降级为静态检查，并在输出里明确标注。
+    """
+    m = re.match(r"^\s*(?:python3?|py)\s+([\w./\\-]+\.py)(.*)$", cmd or "")
+    if not m:
+        return None, False
+    script, rest = m.group(1), (m.group(2) or "").strip()
+    probe = os.path.join("scripts", "_evidence_probe.py")
+    if not os.path.isfile(os.path.join(root, probe)):
+        return None, False
+    new = f'"{sys.executable}" {probe} "{script}" "{log_path}"'
+    if rest:
+        new += " " + rest
+    return new, True
+
+
+def check_touches_static(root: str, touches: list[str], cmd: str) -> list[str]:
+    """静态交叉验证（**降级路径**）：证据脚本文本里是否引用了 touches 文件。
+
+    ⚠️ 这是弱检查：`import src.cart` 但不调用即可绕过。
+    仅当无法做运行时探针（非 Python 命令）时才走这里，且调用方必须
+    在输出里标明"未做运行时验证"。
     """
     problems: list[str] = []
     for t in touches:
@@ -215,16 +262,51 @@ def run_evidence(root: str, ev: dict, fid: str) -> tuple[list[str], list[str]]:
     if not isinstance(touches, list):
         errors += ["touches 必须是数组"]
         touches = []
-    errors += check_touches(root, touches, cmd)
+
+    # touches 的存在性先查（快，且明确）
+    for t in touches:
+        if not os.path.isfile(os.path.join(root, t)):
+            errors.append(f"touches 声明的文件不存在: {t}")
+
+    # ── 决定走运行时探针（强）还是静态检查（弱，须显式标注）──
+    log_path = os.path.join(
+        tempfile.gettempdir(), f"evidence_touch_{os.getpid()}_{fid}.log"
+    )
+    probed_cmd, can_probe = probe_command(root, cmd, log_path)
+    run_cmd = probed_cmd or cmd
+    if can_probe and touches:
+        info.append(f"运行时探针已启用（验证 {len(touches)} 个文件是否真的被执行）")
+    elif touches:
+        errors += check_touches_static(root, touches, cmd)
+        info.append(
+            "⚠️ 未做运行时验证（证据命令非 `python xxx.py` 形式）"
+            "—— 本次仅静态检查，import 但不调用即可绕过"
+        )
+    else:
+        info.append("⚠️ 未声明 touches —— 无法验证证据是否真的触及相关实现")
 
     # 强度/交叉验证没过就不再执行（省时间，且结论已定）
     if errors:
         return errors, info
 
+    # ── 执行前记录产物指纹 ──
+    # 为什么需要：门禁原来只检查产物「存在且非空」，于是**预先放一个旧文件**
+    # 就能满足 artifacts 要求（实测绕过了）。记录执行前的 size+mtime，
+    # 执行后若完全没变，说明这个产物不是本次跑出来的。
+    art_before: dict[str, tuple[int, int]] = {}
+    for a in ev.get("artifacts") or []:
+        ap = os.path.join(root, a)
+        if os.path.isfile(ap):
+            try:
+                st = os.stat(ap)
+                art_before[a] = (st.st_size, st.st_mtime_ns)
+            except OSError:
+                pass  # 读不到指纹就不做"是否变化"的判断（下面仍会检查存在与非空）
+
     # ── 真的执行 ──
     try:
         r = subprocess.run(
-            cmd,
+            run_cmd,
             cwd=root,
             shell=True,
             capture_output=True,
@@ -242,7 +324,50 @@ def run_evidence(root: str, ev: dict, fid: str) -> tuple[list[str], list[str]]:
         return [f"证据命令无法执行: {e.__class__.__name__}: {e}"], info
 
     out = (r.stdout or "") + (r.stderr or "")
-    info.append(f"{fid}: 执行 {cmd} -> exit={r.returncode}")
+    info.append(f"执行 {cmd} -> exit={r.returncode}")
+
+    # ── 运行时校验：touches 里的文件是否**真的被执行了** ──
+    # 这是拦住「import 但不用 + 硬编码答案」的关键一步（静态匹配拦不住）。
+    #
+    # 判定规则（实测校准）：
+    #   只记到 `<module>` 不算数 —— 因为 `import src.cart` 就会触发模块级执行。
+    #   必须有**具名函数**被调用；除非该文件本身没有任何函数定义
+    #   （纯脚本式模块，模块级就是它的全部逻辑）。
+    if can_probe and touches:
+        per_file: dict[str, set[str]] = {}
+        try:
+            with open(log_path, "r", encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line or "::" not in line:
+                        continue
+                    f_, _, fn_ = line.rpartition("::")
+                    per_file.setdefault(f_.lower(), set()).add(fn_)
+        except OSError as e:
+            errors.append(
+                f"探针日志读取失败（无法验证 touches）: "
+                f"{e.__class__.__name__}: {e.strerror or e}"
+            )
+
+        for t in touches:
+            want = os.path.abspath(os.path.join(root, t)).lower()
+            names = per_file.get(want, set())
+            if not names:
+                errors.append(
+                    f"{t} 在证据执行过程中**从未被执行** —— 只是 import/提及不算验证"
+                )
+                continue
+            named = {n for n in names if n and n != "<module>"}
+            if named:
+                continue
+            # 只有 <module>：看该文件是不是纯脚本式（无函数定义）
+            if has_function_def(os.path.join(root, t)):
+                errors.append(
+                    f"{t} 只被 import 加载、其中的函数**一次都没被调用** —— "
+                    f"证据没有真正验证它的行为"
+                )
+        if not errors:
+            info.append(f"运行时校验通过：{len(touches)} 个文件的函数均被真实调用")
 
     want_exit = ev.get("expect_exit", 0)
     if r.returncode != want_exit:
@@ -258,12 +383,30 @@ def run_evidence(root: str, ev: dict, fid: str) -> tuple[list[str], list[str]]:
                 f"        实际输出尾部: {out.strip()[-300:]}"
             )
 
+    if can_probe:
+        try:
+            os.remove(log_path)
+        except OSError:
+            pass  # 临时文件删不掉不影响结论，不打扰用户
+
     for a in ev.get("artifacts") or []:
         ap = os.path.join(root, a)
         if not os.path.isfile(ap):
             errors.append(f"产物不存在: {a}")
         elif os.path.getsize(ap) == 0:
             errors.append(f"产物是空文件: {a}（0 字节 = 没有真的产出）")
+        elif a in art_before:
+            try:
+                st = os.stat(ap)
+                if (st.st_size, st.st_mtime_ns) == art_before[a]:
+                    errors.append(
+                        f"产物 {a} 在证据执行前后**完全没变** —— "
+                        f"它不是本次跑出来的（疑似复用预先放好的旧文件）。\n"
+                        f"        修法：让证据命令真的生成它；"
+                        f"若确属幂等/缓存产出，请改用 stdout 校验代替 artifacts"
+                    )
+            except OSError:
+                pass
 
     return errors, info
 

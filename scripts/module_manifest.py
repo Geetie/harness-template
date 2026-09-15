@@ -65,6 +65,8 @@ MODULES: dict[str, dict] = {
             ".harness/hooks/hooks.json",
             # 证据门禁：标 completed 必须给可执行证据（防"只声明完成"）
             "scripts/evidence_gate.py",
+            # 运行时探针：确认证据真的调用了被测代码（拦"import 但不用"）
+            "scripts/_evidence_probe.py",
             ".githooks/pre-commit",
             ".githooks/pre-commit.py",
             # harness_version.py 必须归 verification：它被 init/lint/new_project/guard
