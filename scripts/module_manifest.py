@@ -162,6 +162,16 @@ MODULES: dict[str, dict] = {
         ],
         "deps": [],
     },
+    "testing": {
+        "desc": "测试治理层：智能选测 / 分层 / oracle 有效性审计 / 汇报模板",
+        "layer": "③验证层",
+        "owned": [
+            "scripts/test_runner.py",
+            "scripts/test_audit.py",
+            ".harness/testing/TEST-STRATEGY.md",
+        ],
+        "deps": ["verification"],
+    },
     "upgrade": {
         "desc": "升级层：把模板的改进三向合并回已生成的项目（sync_template.py）",
         "layer": "③验证层",
@@ -221,6 +231,7 @@ MODULE_REQUIRED: dict[str, list[str]] = {
     "integration-check": ["scripts/check_integration.py"],
     "code-quality": ["scripts/quality.py", ".harness/CODE-QUALITY.md"],
     "design": ["scripts/design_smell.py", ".harness/design/DESIGN-PRINCIPLES.md"],
+    "testing": ["scripts/test_runner.py", ".harness/testing/TEST-STRATEGY.md"],
     "upgrade": ["scripts/sync_template.py", "scripts/sync_lib.py"],
 }
 
@@ -237,6 +248,8 @@ PRESETS: dict[str, list[str]] = {
         "placeholder-guard",
         "skills",
         "code-quality",
+        "design",
+        "testing",
     ],
     "full": [
         "instructions",
@@ -253,6 +266,7 @@ PRESETS: dict[str, list[str]] = {
         "upgrade",
         "code-quality",
         "design",
+        "testing",
     ],
 }
 

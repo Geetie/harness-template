@@ -46,6 +46,7 @@
 | **升级层** | `upgrade` | `verification` | `sync_template.py` + `sync_lib.py`（三向合并拉模板更新） | 项目与模板脱钩，模板改进永远拿不到 |
 | **代码规范层** | `code-quality` | `verification` | `quality.py`（ESLint/Prettier/ruff 接线）+ `CODE-QUALITY.md` | 风格问题不再被拦，只能靠 review 兜 |
 | **设计层** | `design` | — | `design_smell.py`（技术债信号）+ `DESIGN-PRINCIPLES.md`（SOLID 判据/模式选择） | 缺"写代码前的设计判断"，债靠事后还 |
+| **测试治理层** | `testing` | `verification` | `test_runner.py`（智能选测/分层/进度）+ `test_audit.py`（oracle 有效性审计）+ `TEST-STRATEGY.md` | 每次跑全量、有效性不明、假绿测试不删 |
 
 **元文档（不属任何模块，始终保留）**：
 `README.md` · `.harness/README.md` · `.harness/MAINTENANCE.md` · `.harness/MODULES.md`
@@ -91,7 +92,7 @@
 | 档位 | 开启模块 | 用途 |
 |---|---|---|
 | **minimal** | `instructions` / `state` / `verification` / `memory` | 小工具、脚本、实验 |
-| **standard** | minimal + `delivery` / `planning` / `placeholder-guard` / `skills` | 常规项目 |
+| **standard** | minimal + `delivery` / `planning` / `placeholder-guard` / `skills` / `code-quality` / `design` / `testing` | 常规项目 |
 | **full** | standard + `routing` / `decisions` / `integration-check` / `upgrade` / `design` | 长期演进、多模块、多 Agent 协作 |
 
 用 `new_project.py --preset full` 选择；也可在 config.json 里逐个覆盖。

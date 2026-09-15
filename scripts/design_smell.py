@@ -50,8 +50,18 @@ MAX_NESTING = 4
 MAX_PARAMS = 5
 MAX_CLASS_METHODS = 15
 
-SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv",
-             "dist", "build", ".next", "coverage", "_selftest"}
+SKIP_DIRS = {
+    ".git",
+    "node_modules",
+    "__pycache__",
+    ".venv",
+    "venv",
+    "dist",
+    "build",
+    ".next",
+    "coverage",
+    "_selftest",
+}
 PY_EXT = (".py",)
 TS_EXT = (".ts", ".tsx", ".js", ".jsx")
 
@@ -66,8 +76,12 @@ class Signal:
         self.detail = detail
 
     def as_dict(self) -> dict:
-        return {"id": self.sid, "file": self.file, "line": self.line,
-                "detail": self.detail}
+        return {
+            "id": self.sid,
+            "file": self.file,
+            "line": self.line,
+            "detail": self.detail,
+        }
 
 
 def iter_source_files(paths: list[str]) -> tuple[list[str], list[str]]:
@@ -103,13 +117,24 @@ def _nesting_depth_py(tree: ast.AST) -> list[tuple[int, int]]:
     def walk(node: ast.AST, depth: int) -> None:
         for child in ast.iter_child_nodes(node):
             d = depth
-            if isinstance(child, (ast.If, ast.For, ast.AsyncFor, ast.While,
-                                  ast.Try, ast.With, ast.AsyncWith)):
+            if isinstance(
+                child,
+                (
+                    ast.If,
+                    ast.For,
+                    ast.AsyncFor,
+                    ast.While,
+                    ast.Try,
+                    ast.With,
+                    ast.AsyncWith,
+                ),
+            ):
                 d = depth + 1
                 if d > MAX_NESTING:
                     out.append((getattr(child, "lineno", 0), d))
-            elif isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef,
-                                    ast.ClassDef)):
+            elif isinstance(
+                child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+            ):
                 # 函数/类开启新的一层计数起点，但从父级深度继续
                 d = depth
             walk(child, d)
@@ -134,13 +159,25 @@ def scan_python(path: str, rel: str) -> tuple[list[Signal], str | None]:
 
     # SM001 god-module
     if len(lines) > MAX_LINES:
-        out.append(Signal("SM001", rel, 0,
-                          f"{len(lines)} 行（阈值 {MAX_LINES}）—— 多半承担了多个职责"))
-    top_defs = [n for n in tree.body
-                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))]
+        out.append(
+            Signal(
+                "SM001",
+                rel,
+                0,
+                f"{len(lines)} 行（阈值 {MAX_LINES}）—— 多半承担了多个职责",
+            )
+        )
+    top_defs = [
+        n
+        for n in tree.body
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+    ]
     if len(top_defs) > MAX_TOP_DEFS:
-        out.append(Signal("SM001", rel, 0,
-                          f"顶层定义 {len(top_defs)} 个（阈值 {MAX_TOP_DEFS}）"))
+        out.append(
+            Signal(
+                "SM001", rel, 0, f"顶层定义 {len(top_defs)} 个（阈值 {MAX_TOP_DEFS}）"
+            )
+        )
 
     for node in ast.walk(tree):
         # SM004 long-params
@@ -148,23 +185,43 @@ def scan_python(path: str, rel: str) -> tuple[list[Signal], str | None]:
             a = node.args
             n = len(a.posonlyargs) + len(a.args) + len(a.kwonlyargs)
             if n > MAX_PARAMS:
-                out.append(Signal("SM004", rel, node.lineno,
-                                  f"{node.name}() 有 {n} 个参数（阈值 {MAX_PARAMS}）"
-                                  f" —— 考虑参数对象"))
+                out.append(
+                    Signal(
+                        "SM004",
+                        rel,
+                        node.lineno,
+                        f"{node.name}() 有 {n} 个参数（阈值 {MAX_PARAMS}）"
+                        f" —— 考虑参数对象",
+                    )
+                )
         # SM005 god-class
         if isinstance(node, ast.ClassDef):
-            methods = [n for n in node.body
-                       if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+            methods = [
+                n
+                for n in node.body
+                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+            ]
             if len(methods) > MAX_CLASS_METHODS:
-                out.append(Signal("SM005", rel, node.lineno,
-                                  f"类 {node.name} 有 {len(methods)} 个方法"
-                                  f"（阈值 {MAX_CLASS_METHODS}）"))
+                out.append(
+                    Signal(
+                        "SM005",
+                        rel,
+                        node.lineno,
+                        f"类 {node.name} 有 {len(methods)} 个方法"
+                        f"（阈值 {MAX_CLASS_METHODS}）",
+                    )
+                )
 
     # SM003 deep-nesting：按**逻辑**嵌套（ast），不按物理缩进
     for lineno, depth in _nesting_depth_py(tree):
-        out.append(Signal("SM003", rel, lineno,
-                          f"控制流嵌套 {depth} 层（阈值 {MAX_NESTING}）"
-                          f" —— 考虑提取函数或早返回"))
+        out.append(
+            Signal(
+                "SM003",
+                rel,
+                lineno,
+                f"控制流嵌套 {depth} 层（阈值 {MAX_NESTING}） —— 考虑提取函数或早返回",
+            )
+        )
     return out, None
 
 
@@ -180,13 +237,20 @@ def scan_ts(path: str, rel: str) -> tuple[list[Signal], str | None]:
 
     out: list[Signal] = []
     if len(lines) > MAX_LINES:
-        out.append(Signal("SM001", rel, 0,
-                          f"{len(lines)} 行（阈值 {MAX_LINES}）—— 多半承担了多个职责"))
+        out.append(
+            Signal(
+                "SM001",
+                rel,
+                0,
+                f"{len(lines)} 行（阈值 {MAX_LINES}）—— 多半承担了多个职责",
+            )
+        )
 
     exports = sum(1 for ln in lines if re.match(r"\s*export\s", ln))
     if exports > MAX_TOP_DEFS:
-        out.append(Signal("SM001", rel, 0,
-                          f"export {exports} 个（阈值 {MAX_TOP_DEFS}）"))
+        out.append(
+            Signal("SM001", rel, 0, f"export {exports} 个（阈值 {MAX_TOP_DEFS}）")
+        )
 
     for i, ln in enumerate(lines, 1):
         s = ln.strip()
@@ -197,8 +261,11 @@ def scan_ts(path: str, rel: str) -> tuple[list[Signal], str | None]:
         if m:
             params = [p for p in m.group(1).split(",") if p.strip()]
             if len(params) > MAX_PARAMS:
-                out.append(Signal("SM004", rel, i,
-                                  f"参数 {len(params)} 个（阈值 {MAX_PARAMS}）"))
+                out.append(
+                    Signal(
+                        "SM004", rel, i, f"参数 {len(params)} 个（阈值 {MAX_PARAMS}）"
+                    )
+                )
         indent = len(ln) - len(ln.lstrip())
         if indent // 2 > MAX_NESTING + 2:  # TS 常用 2 空格缩进
             out.append(Signal("SM003", rel, i, "嵌套过深 —— 考虑提取函数"))
@@ -271,8 +338,12 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="技术债信号检测（不是 SOLID 合规检查）")
     ap.add_argument("paths", nargs="*", default=None, help="要扫描的路径（默认 src/）")
     ap.add_argument("--json", action="store_true")
-    ap.add_argument("--fail-on", choices=["none", "warn"], default="none",
-                    help="warn=有信号就非零退出（CI 用，慎用）")
+    ap.add_argument(
+        "--fail-on",
+        choices=["none", "warn"],
+        default="none",
+        help="warn=有信号就非零退出（CI 用，慎用）",
+    )
     ap.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
     args = ap.parse_args(argv)
 
@@ -285,8 +356,13 @@ def main(argv: list[str] | None = None) -> int:
             if os.path.isfile(cfgp):
                 cfg = json.load(open(cfgp, encoding="utf-8"))
                 cfg_root = cfg.get("code_root") or "src"
-        except (OSError, json.JSONDecodeError):
-            pass
+        except (OSError, json.JSONDecodeError) as e:
+            # 不写 `except: pass` —— 那会让"没读到配置"与"配置说用 src"同形（S14）。
+            print(
+                f"[i] .harness/config.json 读取失败（{e.__class__.__name__}），"
+                f"改用默认路径 {cfg_root}/",
+                file=sys.stderr,
+            )
         paths = [cfg_root]
 
     files, notes = iter_source_files(paths)
@@ -311,21 +387,32 @@ def main(argv: list[str] | None = None) -> int:
     # SM002 循环依赖（Python）
     graph = build_import_graph(files)
     for cyc in find_cycles(graph):
-        signals.append(Signal(
-            "SM002", " → ".join(cyc) + " → " + cyc[0], 0,
-            "模块循环依赖 —— 依赖方向错了，必然耦合；抽第三方或改用事件/回调"))
+        signals.append(
+            Signal(
+                "SM002",
+                " → ".join(cyc) + " → " + cyc[0],
+                0,
+                "模块循环依赖 —— 依赖方向错了，必然耦合；抽第三方或改用事件/回调",
+            )
+        )
 
     by_id: dict[str, list[Signal]] = {}
     for s in signals:
         by_id.setdefault(s.sid, []).append(s)
 
     if args.json:
-        print(json.dumps({
-            "version": VERSION,
-            "scanned_files": len(files),
-            "signals": [s.as_dict() for s in signals],
-            "parse_failures": failures,
-        }, ensure_ascii=False, indent=2))
+        print(
+            json.dumps(
+                {
+                    "version": VERSION,
+                    "scanned_files": len(files),
+                    "signals": [s.as_dict() for s in signals],
+                    "parse_failures": failures,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
         return 1 if (signals and args.fail_on == "warn") else 0
 
     print(f"\n技术债信号检测 — 扫描 {len(files)} 个文件")
@@ -335,8 +422,11 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(f"\n⚠️  {len(signals)} 条信号（**不是违规**，是「这里值得看一眼」）：\n")
         names = {
-            "SM001": "god-module", "SM002": "circular-import",
-            "SM003": "deep-nesting", "SM004": "long-params", "SM005": "god-class",
+            "SM001": "god-module",
+            "SM002": "circular-import",
+            "SM003": "deep-nesting",
+            "SM004": "long-params",
+            "SM005": "god-class",
         }
         for sid in sorted(by_id):
             bucket = by_id[sid]
