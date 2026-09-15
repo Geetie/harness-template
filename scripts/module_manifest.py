@@ -27,6 +27,8 @@ MODULES: dict[str, dict]  —— 以模块 ID 为键，值为:
 
 from __future__ import annotations
 
+import os
+
 # ──────────────────────────────────────────────────────────────────────────
 # 模块清单
 # ──────────────────────────────────────────────────────────────────────────
@@ -320,6 +322,83 @@ EXCLUDE_FILES = {
 def module_paths() -> dict[str, list[str]]:
     """模块 ID → 拥有路径列表（供生成侧过滤、检查侧豁免共用）。"""
     return {mid: list(m["owned"]) for mid, m in MODULES.items()}
+
+
+def self_check(root: str | None = None) -> list[str]:
+    """校验本清单自身的**不变式**，返回问题列表（空 = 通过）。
+
+    为什么需要它（实测踩到两个坑）：
+      ① **一个文件被两个模块 own** —— `sync_lib.py` 曾同时出现在
+         `verification` 与 `upgrade` 的 owned 里。由于**排除优先于包含**
+         （文件只要落在任一"已关闭模块"的 owned 里就会被排除），
+         结果是 minimal/standard 档生成的项目里 `new_project.py` 一跑
+         就 `ModuleNotFoundError`。**清单自己矛盾，但没有任何地方检查过。**
+      ② **required 与 owned 语义不同却容易漂移** ——
+         owned 是"模块拥有什么"（复制过滤用），
+         required 是"体检红线"（少了就算这层不完整）。
+         两者必须满足 `required ⊆ owned`，但没有校验时很容易改一边忘一边。
+
+    校验项（每条都对应一种真实故障）：
+      1. 同一文件不被两个模块 own（否则排除/包含行为不可预期）
+      2. `required ⊆ owned`（否则体检会点名一个模块并不拥有的文件）
+      3. 所有声明路径存在于磁盘（否则复制时会静默少文件）
+      4. 每个模块的 owned 非空（空模块 = 声明了但没内容）
+      5. deps 引用的模块确实存在（否则依赖解析会无声跳过）
+
+    root 为 None 时以本文件所在目录的上级为仓库根。
+    """
+    problems: list[str] = []
+    if root is None:
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    # 1. 同一文件被多个模块 own
+    owner_of: dict[str, list[str]] = {}
+    for mid, info in MODULES.items():
+        for f in info.get("owned", []):
+            owner_of.setdefault(f, []).append(mid)
+    for f, owners in sorted(owner_of.items()):
+        if len(owners) > 1:
+            problems.append(
+                f"文件被多个模块同时 own: {f} → {owners}。"
+                f"因「排除优先于包含」，任一模块关闭都会把它排除，"
+                f"行为不可预期。应只留一个归属"
+            )
+
+    # 2. required ⊆ owned
+    for mid, req in sorted(MODULE_REQUIRED.items()):
+        owned = set(MODULES.get(mid, {}).get("owned", []))
+        extra = sorted(set(req) - owned)
+        if extra:
+            problems.append(
+                f"MODULE_REQUIRED[{mid}] 有文件不在 owned 里: {extra}"
+                f"（体检会点名该模块并不拥有的文件）"
+            )
+
+    # 3. 声明路径存在于磁盘
+    for mid, info in sorted(MODULES.items()):
+        for f in info.get("owned", []):
+            if not os.path.exists(os.path.join(root, f)):
+                problems.append(f"MODULES[{mid}].owned 声明了不存在的路径: {f}")
+    for mid, req in sorted(MODULE_REQUIRED.items()):
+        for f in req:
+            if not os.path.exists(os.path.join(root, f)):
+                problems.append(f"MODULE_REQUIRED[{mid}] 声明了不存在的路径: {f}")
+
+    # 4. owned 非空
+    for mid, info in sorted(MODULES.items()):
+        if not info.get("owned"):
+            problems.append(f"MODULES[{mid}] 的 owned 为空（声明了模块却没有内容）")
+
+    # 5. deps 指向存在的模块
+    for mid, info in sorted(MODULES.items()):
+        for dep in info.get("deps", []):
+            if dep not in MODULES:
+                problems.append(
+                    f"MODULES[{mid}].deps 引用了不存在的模块: {dep}"
+                    f"（依赖解析会无声跳过）"
+                )
+
+    return problems
 
 
 def module_deps() -> dict[str, list[str]]:

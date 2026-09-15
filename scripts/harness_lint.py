@@ -191,6 +191,7 @@ ALL_CHECKS = [
     "L009",
     "L010",
     "L011",
+    "L012",
 ]
 
 
@@ -1107,6 +1108,42 @@ def check_l010(
     return out
 
 
+def check_l012(root: str) -> list[Finding]:
+    """L012 模块清单自洽（`module_manifest` 的不变式）。
+
+    为什么需要它（实测踩到的真实事故）：
+    `sync_lib.py` 曾**同时**出现在 `verification` 与 `upgrade` 的 `owned` 里。
+    由于生成侧是「**排除优先于包含**」（文件只要落在任一"已关闭模块"的
+    owned 里就会被排除），结果是 minimal/standard 档生成的项目里
+    `new_project.py` 一跑就 `ModuleNotFoundError: No module named 'sync_lib'`。
+    —— **清单自己矛盾，却没有任何地方检查过。**
+
+    另外 `MODULE_REQUIRED`（体检红线）与 `MODULES[].owned`（复制依据）
+    语义不同但必须满足 `required ⊆ owned`，也容易改一边忘一边。
+
+    校验项见 `module_manifest.self_check` 的 docstring。
+    """
+    try:
+        from module_manifest import self_check  # noqa: PLC0415
+    except ImportError:
+        # 清单不在（模块被关闭或未生成）→ 本规则无对象可查，明确跳过
+        return []
+    out: list[Finding] = []
+    for p in self_check(root):
+        out.append(
+            Finding(
+                "L012",
+                "error",
+                "scripts/module_manifest.py",
+                0,
+                p,
+                "清单是生成过滤与检查豁免的共同依据；自相矛盾会让行为不可预期"
+                "（典型后果：某档位生成的项目里脚本一跑就 ModuleNotFoundError）",
+            )
+        )
+    return out
+
+
 def check_l011(root: str, bodies: dict[str, dict[str, str]]) -> list[Finding]:
     """L011 partial 决策必须写明 gap 与 blocked_by。
 
@@ -1202,6 +1239,11 @@ def main(argv: list[str] | None = None) -> int:
         findings += check_l006(root, docs, args.max_read_list)
     if "L007" in only:
         findings += check_l007(root, docs)
+
+    # L012 清单自洽：不依赖任何可选模块（清单文件本身缺失时规则内部会明确跳过），
+    # 所以放在主流程，不进 decision_checks 组。
+    if "L012" in only:
+        findings += check_l012(root)
 
     # 决策演进组：只有存在 planning/decisions/ 时才跑（可插拔 —— 未启用 decisions
     # 模块的项目不该被这些规则打扰）。这是"缺失即降级，不报错"的落地。
