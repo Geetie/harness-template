@@ -128,9 +128,22 @@ ABS_WIN = re.compile(r"\b[a-zA-Z]:[\\/][^\s`)\]\"']*")
 ABS_POSIX_HOME = re.compile(r"(?<![\w.])/(?:Users|home|mnt|opt)/[^\s`)\]\"']*")
 
 # ── L003 基线数字 ──
+# ⚠️ 中英混排的 `\b` 陷阱（实测踩到，导致 L003 完全不工作）：
+# 原来写 `(?:测试|用例|tests?)\b` —— 但 `\b` 要求词边界，
+# 而中文"测试通过"里的「试」与「通」都是 `\w`，两者之间**没有**词边界，
+# 于是 `\b` 永远不成立 → 整条基线检查从不触发（静默失效）。
+# 改用 `(?![a-zA-Z])`：只排除"后面紧跟英文字母"的情况
+# （`test` 不该匹配 `testscript`），中文后无限制。
+# ⚠️ 中英混排的 `\b` 陷阱（实测踩到，导致 L003 **完全不工作**）：
+# 原来写 `(?:测试|用例|tests?)\b` —— 但 `\b` 要求词边界，
+# 而中文「测试通过」里的「试」与「通」都是 `\w`，两者之间**没有**词边界，
+# 于是 `\b` 永远不成立 → 整条基线检查从不触发，且**静默无报错**
+# （看起来"没有漂移"，其实是"根本没查"）。
+# 改用 `(?![a-zA-Z])`：只排除「后面紧跟英文字母」（`test` 不该匹配 `testscript`），
+# 中文后则无限制。
 BASE_PATTERNS = [
-    re.compile(r"(\d{3,6})\s*个?\s*(?:测试|用例|tests?)\b", re.I),
-    re.compile(r"(\d{3,6})\s*(?:通过|passed)\b", re.I),
+    re.compile(r"(\d{3,6})\s*个?\s*(?:测试|用例|tests?)(?![a-zA-Z])", re.I),
+    re.compile(r"(\d{3,6})\s*(?:通过|passed)(?![a-zA-Z])", re.I),
     re.compile(r"(\d{3,6})\s*/\s*\d+\s*/\s*\d+"),  # passed/failed/skipped
     re.compile(r"(?:total|全量|基线)\D{0,12}(\d{3,6})", re.I),
 ]
@@ -386,6 +399,21 @@ def is_real_path_ref(ref: str) -> bool:
         return False
     if stem and len(set(stem)) == 1 and stem[0].isalpha():
         return False  # `xxx` / `aaa` / `x` 这类重复单字符
+    # 4. **包/工程基建文件名** —— 文档里提到它们几乎总是在「列举一类文件」
+    #    （如"排除 __init__.py / conftest.py / setup.py"），
+    #    而不是"引用本仓库里的某个具体文件"。
+    #    实测不加这条，CAPABILITIES.md 的一行列举就产生 7 条误报。
+    if ref.replace("\\", "/").rsplit("/", 1)[-1].lower() in {
+        "__init__.py",
+        "conftest.py",
+        "setup.py",
+        "manage.py",
+        "settings.py",
+        "wsgi.py",
+        "asgi.py",
+        "py.typed",
+    }:
+        return False
     return True
 
 
@@ -429,7 +457,7 @@ def check_l001(
         content = read(d)
         if not content:
             continue
-        for i, ln in enumerate(content.splitlines(), 1):
+        for i, ln in iter_lines_skip_fence(content):
             if is_ignored(ln):
                 continue
             for pat in (BACKTICK_PATH, MD_LINK):
@@ -492,7 +520,7 @@ def check_l002(root: str, docs: list[str], name_index: set[str]) -> list[Finding
         content = read(d)
         if not content:
             continue
-        for i, ln in enumerate(content.splitlines(), 1):
+        for i, ln in iter_lines_skip_fence(content):
             if is_ignored(ln):
                 continue
             for pat in (ABS_WIN, ABS_POSIX_HOME):
@@ -525,7 +553,7 @@ def check_l003(root: str, docs: list[str]) -> list[Finding]:
         content = read(d)
         if not content:
             continue
-        for i, ln in enumerate(content.splitlines(), 1):
+        for i, ln in iter_lines_skip_fence(content):
             for pat in BASE_PATTERNS:
                 for m in pat.finditer(ln):
                     raw = m.group(1)
@@ -754,7 +782,7 @@ def check_l007(root: str, docs: list[str]) -> list[Finding]:
         if not content:
             continue
         keys: dict[str, int] = {}
-        for i, ln in enumerate(content.splitlines(), 1):
+        for i, ln in iter_lines_skip_fence(content):
             if is_ignored(ln):
                 continue
             for m in PLACEHOLDER.finditer(ln):
