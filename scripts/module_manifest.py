@@ -280,6 +280,7 @@ PRESETS: dict[str, list[str]] = {
 #    让人以为是项目少了文件（真实事故：MAINTENANCE.md 漏写 .harness/ 前缀）。
 ALWAYS_FILES = [
     "README.md",
+    ".harness/CAPABILITIES.md",
     ".harness/MAINTENANCE.md",
     ".harness/MODULES.md",
     ".harness/README.md",
