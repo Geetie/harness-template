@@ -254,6 +254,7 @@ PRESETS: dict[str, list[str]] = {
         "code-quality",
         "design",
         "testing",
+        "integration-check",
     ],
     "full": [
         "instructions",

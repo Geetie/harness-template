@@ -313,6 +313,150 @@ def analyze(
     return reachable, unresolved
 
 
+# 包与工程基建文件：它们本来就不该被 import 链"引用到"，
+# 任何模式（入口可达性 / 入度）都必须排除，否则必出噪音（实测：__init__.py 被报孤儿）。
+SKIP_BASENAMES = {
+    "__init__.py",
+    "conftest.py",
+    "setup.py",
+    "manage.py",
+    "settings.py",
+    "wsgi.py",
+    "asgi.py",
+}
+
+
+def is_infra_file(path: str) -> bool:
+    """是否为包/工程基建文件（不参与集成判定）。"""
+    return os.path.basename(path) in SKIP_BASENAMES
+
+
+# 工具脚本目录：这些文件是**命令行入口**，本来就不该被 import。
+# 不排除它们会让降级判定把整个 scripts/ 报成孤儿（实测：模板仓库自己被误报 8 个）。
+TOOL_DIRS = ("scripts/", "tools/", "bin/", "cmd/", "cli/")
+
+
+def looks_like_entry(path: str) -> bool:
+    """该文件是否"看起来是入口"（因而豁免孤儿判定）。
+
+    三条判据，任一命中即算：
+      ① 在工具脚本目录下（scripts/ tools/ bin/ …）—— 它们是命令行入口
+      ② 含 `if __name__ == "__main__"` —— Python 的显式入口标记
+      ③ 文件名在入口候选里（main.py / index.ts …）
+    """
+    rel = os.path.relpath(path).replace("\\", "/").lower()
+    if any(rel.startswith(d) for d in TOOL_DIRS):
+        return True
+    if "/" in rel and any(f"/{d}" in rel for d in TOOL_DIRS):
+        return True
+    base = os.path.basename(path).lower()
+    if base in {os.path.basename(c).lower() for c in AUTO_ENTRY_CANDIDATES}:
+        return True
+    # ② 显式入口标记（只读前 4KB，够用且快）
+    if path.endswith(".py"):
+        try:
+            with open(path, encoding="utf-8", errors="ignore") as fh:
+                head = fh.read(4096)
+            if '__name__ == "__main__"' in head or "__name__ == '__main__'" in head:
+                return True
+        except OSError:
+            pass
+    return False
+
+
+def find_orphans_by_indegree(
+    root: str,
+    sources: list[str],
+    aliases: list[tuple[str, str]],
+    exts: set,
+    allow: list[str],
+) -> tuple[list[Orphan], str]:
+    """**无入口时的降级检测**：按「入度 = 0」找孤儿模块。
+
+    为什么需要这个降级
+    ------------------
+    原实现依赖"主流程入口"，探测不到就直接退出 2。实测后果很严重：
+    默认配置下（新项目没配 entry），接线检查**根本不跑** →
+    未集成的代码畅行无阻。**一个只在理想条件下工作的门禁，等于没有门禁。**
+
+    原理
+    ----
+    一个源码文件若**没有被任何其他源码文件 import**，它要么是入口，
+    要么就是没人用的代码。这个判断**不需要知道入口在哪**。
+
+    误报防护（四层，缺一层就会吵得没人用）
+    ------------------------------------
+      ① 包与测试基建（`__init__.py` / `conftest.py` / `setup.py`）→ 跳过
+      ② 已知入口候选（main.py / index.ts 等）→ 跳过
+      ③ 白名单（config.json 的 `integration.allow_orphans`）→ 跳过
+      ④ 候选模块 < 2 个 → 不判断（单个文件谈不上"模块间集成"）。
+         注意**不要**写成"全部入度 0 就不判断" —— 多模块项目里
+         "全部入度 0" 恰恰是最该报的（各写各的、互不引用）
+
+    返回 (孤儿列表, 说明)。说明会写进报告，讲清用的是哪种判定。
+    """
+    entry_names = {os.path.basename(c).lower() for c in AUTO_ENTRY_CANDIDATES}
+    allow_norm = {a.replace("\\", "/").lstrip("./").lower() for a in (allow or [])}
+
+    indeg: dict[str, int] = {}
+    for s in sources:
+        ap = os.path.normpath(s)
+        if is_infra_file(ap):
+            continue
+        indeg[ap] = 0
+
+    for src in sources:
+        try:
+            specs = extract_imports(src)
+        except OSError:
+            continue
+        for spec in specs:
+            for t in resolve_spec(spec, src, root, aliases, exts):
+                tp = os.path.normpath(t)
+                if tp in indeg and tp != os.path.normpath(src):
+                    indeg[tp] += 1
+
+    if not indeg:
+        return [], "没有可分析的源码模块（全部是包/基建文件）"
+
+    zero = [p for p, d in indeg.items() if d == 0]
+    if len(indeg) < 2:
+        # 只有 1 个候选模块 —— 谈不上"模块间集成"，不判断（避免单文件项目误报）。
+        # ⚠️ 注意：不要写成"全部入度 0 就不判断" —— 多模块项目里
+        # 「全部入度 0」恰恰是最严重的情况（各写各的、互不引用），
+        # 那正是最该报的（实测踩到：这条保护曾让真实孤儿漏报）。
+        return [], (
+            f"只有 {len(indeg)} 个候选模块，样本太少，不做集成判定"
+            f"（若是单文件项目属正常）"
+        )
+
+    orphans: list[Orphan] = []
+    for p in sorted(zero):
+        rel = os.path.relpath(p, root).replace("\\", "/")
+        base = os.path.basename(p).lower()
+        # 入口豁免：工具脚本目录 / 显式 __main__ 标记 / 入口候选名
+        if base in entry_names or looks_like_entry(os.path.join(root, rel)):
+            continue
+        if rel.lower() in allow_norm or base in allow_norm:
+            continue
+        try:
+            size = os.path.getsize(p)
+        except OSError:
+            size = -1
+        orphans.append(
+            Orphan(
+                file=rel,
+                bytes=size,
+                reason="没有任何其他源码文件 import 它（入度=0）—— "
+                "要么接进调用链，要么删掉",
+            )
+        )
+    return orphans, (
+        f"无入口可用 → 降级为「入度=0」判定：{len(indeg)} 个模块中 "
+        f"{len(orphans)} 个无人引用"
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description="集成检查：找出写了但从未被调用的孤儿模块（Wiring Failure 静态嫌疑犯）",
@@ -339,6 +483,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--ext", action="append", default=[], help="额外纳入的扩展名（如 .vue），可重复"
     )
+    ap.add_argument(
+        "--allow",
+        action="append",
+        default=None,
+        help="孤儿白名单（可重复）：路径或文件名。仅用于「确定是孤儿但暂不处理」的项；"
+        "每一项都应关联一个待办。常用于降级判定下排除迁移脚本等",
+    )
     ap.add_argument("--json", action="store_true", help="输出 JSON")
     ap.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
     args = ap.parse_args(argv)
@@ -361,46 +512,67 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     entries, entry_note = find_entries(root, args.entry or None)
-    if not entries:
-        print(
-            f"[!] 找不到主流程入口（{entry_note}）。"
-            f"没有入口就无法判断可达性，请用 --entry 指定。",
-            file=sys.stderr,
-        )
-        return 2
 
     aliases = parse_alias_map(args.alias, root)
-    reachable, unresolved = analyze(root, entries, sources, aliases, exts)
+    degrade_note = ""
+    unresolved: list[str] = []
 
-    source_set = set(os.path.normpath(s) for s in sources)
-    entry_set = set(os.path.normpath(e) for e in entries)
-    orphan_paths = sorted(source_set - reachable - entry_set)
-
-    orphans = []
-    for p in orphan_paths:
-        try:
-            size = os.path.getsize(p)
-        except OSError:
-            size = -1
-        rel = os.path.relpath(p, root).replace("\\", "/")
-        orphans.append(
-            Orphan(
-                file=rel,
-                bytes=size,
-                reason="从主流程入口出发的引用可达性分析未覆盖到该文件",
+    if not entries:
+        # ── 降级：不依赖入口的「入度=0」判定 ──
+        # 原实现在这里直接 return 2 —— 后果是"没配入口就完全不检查"，
+        # 而新项目默认没配入口，等于这个门禁从不生效（实测确认）。
+        # 改成降级后，未集成的代码在任何项目里都能被检查到。
+        orphans, degrade_note = find_orphans_by_indegree(
+            root, sources, aliases, exts, args.allow or []
+        )
+        orphan_paths = {os.path.normpath(os.path.join(root, o.file)) for o in orphans}
+        reachable = {
+            p for p in (os.path.normpath(s) for s in sources) if p not in orphan_paths
+        }
+        warnings = [
+            f"未使用主流程入口（{entry_note}）→ 已降级为「入度=0」判定",
+            "降级判定只找「没人 import 的文件」；「注册了但不触发」"
+            "「触发了但写到没人读的地方」它抓不到，需行为验证",
+        ]
+        if not args.include_tests:
+            warnings.append(
+                "测试文件默认排除；只被测试引用的模块仍判为孤儿（这通常是真问题）"
             )
-        )
+    else:
+        reachable, unresolved = analyze(root, entries, sources, aliases, exts)
 
-    warnings = []
-    if unresolved:
-        warnings.append(
-            f"{len(unresolved)} 个 import 说明符无法解析为本地文件"
-            f"（可能是第三方包、动态导入或别名未配置）→ 相关模块可能被误判为孤儿"
-        )
-    if not args.include_tests:
-        warnings.append(
-            "测试文件默认排除；若模块只被测试引用，本工具仍会判为孤儿（这通常是真问题）"
-        )
+        source_set = set(os.path.normpath(s) for s in sources)
+        entry_set = set(os.path.normpath(e) for e in entries)
+        orphan_paths = sorted(source_set - reachable - entry_set)
+
+        orphans = []
+        for p in orphan_paths:
+            # 包/基建文件不参与集成判定（它们本就不该被 import 链引用到）
+            if is_infra_file(p):
+                continue
+            try:
+                size = os.path.getsize(p)
+            except OSError:
+                size = -1
+            rel = os.path.relpath(p, root).replace("\\", "/")
+            orphans.append(
+                Orphan(
+                    file=rel,
+                    bytes=size,
+                    reason="从主流程入口出发的引用可达性分析未覆盖到该文件",
+                )
+            )
+
+        warnings = []
+        if unresolved:
+            warnings.append(
+                f"{len(unresolved)} 个 import 说明符无法解析为本地文件"
+                f"（可能是第三方包、动态导入或别名未配置）→ 相关模块可能被误判为孤儿"
+            )
+        if not args.include_tests:
+            warnings.append(
+                "测试文件默认排除；若模块只被测试引用，本工具仍会判为孤儿（这通常是真问题）"
+            )
 
     result = Result(
         root=root.replace("\\", "/"),
@@ -419,6 +591,8 @@ def main(argv: list[str] | None = None) -> int:
                 {
                     **asdict(result),
                     "entry_source": entry_note,
+                    "degraded": bool(degrade_note),
+                    "degrade_note": degrade_note,
                     "unresolved_count": len(unresolved),
                     "exit_code": exit_code,
                 },
@@ -428,7 +602,11 @@ def main(argv: list[str] | None = None) -> int:
         )
     else:
         print(f"\n代码根: {result.root}")
-        print(f"入口来源: {entry_note}")
+        if degrade_note:
+            print("入口来源: （无）**已降级**")
+            print(f"降级判定: {degrade_note}")
+        else:
+            print(f"入口来源: {entry_note}")
         print(f"入口: {', '.join(result.entries) if result.entries else '(无)'}")
         print(
             f"扫描源文件: {result.scanned}   可达: {result.reachable}   孤儿: {len(orphans)}\n"

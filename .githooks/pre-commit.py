@@ -222,39 +222,39 @@ def main() -> int:
             )
 
     # ── 检查 5：接线检查（防"写了但没接上"）──
-    # 只在配置了入口时跑。没配入口 → 明确提示怎么配，不静默跳过。
-    cfg_all = load_config(root) or {}
-    integ = cfg_all.get("integration") or {}
-    entry = integ.get("entry") if isinstance(integ, dict) else None
-    if entry:
-        ci = os.path.join(root, "scripts", "check_integration.py")
-        if os.path.isfile(ci):
-            code_root_i = cfg_all.get("code_root") or "src"
-            entries = entry if isinstance(entry, list) else [entry]
-            cmd_i = [sys.executable, ci, code_root_i]
-            for e in entries:
-                cmd_i += ["--entry", str(e)]
-            try:
-                r = subprocess.run(
-                    cmd_i, cwd=root, capture_output=True, text=True, timeout=180
+    # **默认就跑** —— 不再要求先配 entry。
+    # 理由（实测）：原实现探测不到入口就退出 2，而新项目默认没配 entry，
+    # 于是这个门禁**从不生效**，未集成的代码畅行无阻。
+    # 现在 check_integration 在无入口时自动降级为「入度=0」判定，可以直接跑。
+    # 配了 entry 就传（可达性分析更精确），没配就用降级模式。
+    ci = os.path.join(root, "scripts", "check_integration.py")
+    if os.path.isfile(ci):
+        cfg_all = load_config(root) or {}
+        integ = cfg_all.get("integration") or {}
+        entry = integ.get("entry") if isinstance(integ, dict) else None
+        allow = integ.get("allow_orphans") if isinstance(integ, dict) else None
+        code_root_i = cfg_all.get("code_root") or "src"
+        cmd_i = [sys.executable, ci, code_root_i]
+        for e in entry if isinstance(entry, list) else ([entry] if entry else []):
+            cmd_i += ["--entry", str(e)]
+        for a in allow or []:
+            cmd_i += ["--allow", str(a)]
+        try:
+            r = subprocess.run(
+                cmd_i, cwd=root, capture_output=True, text=True, timeout=180
+            )
+            if r.returncode != 0:
+                tail = (r.stdout or r.stderr or "").strip()
+                problems.append(
+                    "接线检查未通过（有模块写了但没被任何地方调用）\n"
+                    + (tail[-1200:] if tail else f"      退出码 {r.returncode}")
+                    + "\n      每个孤儿模块：接进调用链 / 删掉 / "
+                    "或用 config.json 的 integration.allow_orphans 显式豁免"
                 )
-                # 退出码 2 = 用法/入口错误 —— 那是配置问题，也要拦（否则门禁形同没有）
-                if r.returncode != 0:
-                    tail = (r.stdout or r.stderr or "").strip()
-                    problems.append(
-                        "接线检查未通过（有模块写了但没被任何地方调用）\n"
-                        + (tail[-1200:] if tail else f"      退出码 {r.returncode}")
-                        + "\n      每个孤儿模块要么接进调用链，要么删掉"
-                    )
-            except subprocess.TimeoutExpired:
-                problems.append("接线检查超时（180s）")
-            except (OSError, subprocess.SubprocessError) as e:
-                problems.append(f"接线检查执行失败（视为未通过）: {e}")
-    elif os.path.isfile(os.path.join(root, "scripts", "check_integration.py")):
-        print("[harness] 提示：未配置 integration.entry，跳过接线检查。")
-        print(
-            '          在 .harness/config.json 加： "integration": {"entry": "src/main.py"}'
-        )
+        except subprocess.TimeoutExpired:
+            problems.append("接线检查超时（180s）")
+        except (OSError, subprocess.SubprocessError) as e:
+            problems.append(f"接线检查执行失败（视为未通过）: {e}")
 
     if not problems:
         print(
